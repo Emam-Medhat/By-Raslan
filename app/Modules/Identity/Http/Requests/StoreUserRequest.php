@@ -19,6 +19,7 @@ class StoreUserRequest extends FormRequest
             'phone' => ['required', 'string', 'max:20', Rule::unique('users', 'phone')],
             'email' => ['nullable', 'email', 'max:190', Rule::unique('users', 'email')],
             'password' => ['required', 'string', 'min:8', 'max:255'],
+            'role_id' => ['nullable', 'exists:roles,id'],
             'active' => ['sometimes', 'boolean'],
         ];
     }

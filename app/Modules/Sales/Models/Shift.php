@@ -3,6 +3,8 @@
 namespace App\Modules\Sales\Models;
 
 use App\Models\User;
+use App\Modules\Accounting\Models\Expense;
+use App\Modules\Inventory\Models\StockMove;
 use App\Modules\Organization\Models\Location;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,8 +17,8 @@ class Shift extends Model
     public const STATUSES = ['open', 'closed'];
 
     protected $fillable = [
-        'location_id', 'cashier', 'opened_at', 'opening_cash',
-        'closed_at', 'counted_cash', 'expected_cash', 'status', 'open_cashier',
+        'location_id', 'pos_terminal', 'cashier', 'closed_by', 'opened_at', 'opening_cash',
+        'closed_at', 'logged_out_at', 'counted_cash', 'expected_cash', 'close_notes', 'status', 'open_cashier',
     ];
 
     protected function casts(): array
@@ -24,15 +26,21 @@ class Shift extends Model
         return [
             'opened_at' => 'datetime',
             'closed_at' => 'datetime',
+            'logged_out_at' => 'datetime',
             'opening_cash' => 'decimal:2',
             'counted_cash' => 'decimal:2',
             'expected_cash' => 'decimal:2',
         ];
     }
 
-    public function cashier(): BelongsTo
+    public function cashierUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cashier');
+    }
+
+    public function closedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'closed_by');
     }
 
     public function location(): BelongsTo
@@ -43,5 +51,27 @@ class Shift extends Model
     public function sales(): HasMany
     {
         return $this->hasMany(Sale::class);
+    }
+
+    public function stockMoves(): HasMany
+    {
+        return $this->hasMany(StockMove::class, 'shift_id');
+    }
+
+    public function expenses(): HasMany
+    {
+        return $this->hasMany(Expense::class, 'shift_id');
+    }
+
+    public function workingSeconds(): int
+    {
+        $end = $this->closed_at ?? now();
+
+        return max(0, $end->getTimestamp() - ($this->opened_at?->getTimestamp() ?? $end->getTimestamp()));
+    }
+
+    public function workingHours(): float
+    {
+        return round($this->workingSeconds() / 3600, 2);
     }
 }

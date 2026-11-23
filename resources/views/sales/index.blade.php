@@ -26,7 +26,7 @@
             @forelse ($sales as $sale)
                 <tr>
                     <td class="px-4 py-3 font-semibold">{{ $sale->no }}</td>
-                    <td class="px-4 py-3">{{ $sale->cashier?->name }}</td>
+                    <td class="px-4 py-3">{{ $sale->cashierUser?->name }}</td>
                     <td class="px-4 py-3">{{ $sale->total }}</td>
                     <td class="px-4 py-3">{{ $sale->paid_cash }}</td>
                     <td class="px-4 py-3">{{ $sale->paid_card }}</td>

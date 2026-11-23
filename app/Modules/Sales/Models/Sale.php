@@ -41,7 +41,7 @@ class Sale extends Model
         return $this->belongsTo(Shift::class);
     }
 
-    public function cashier(): BelongsTo
+    public function cashierUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cashier');
     }

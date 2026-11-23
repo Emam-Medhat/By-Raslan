@@ -97,20 +97,26 @@ class PosController
         $data = $request->validate([
             'shift_id' => ['required', 'exists:shifts,id'],
             'counted' => ['required', 'numeric', 'min:0'],
+            'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
         try {
-            $diff = $this->pos->closeShift((int) $data['shift_id'], (float) $data['counted'], auth()->id());
+            $this->pos->closeShift((int) $data['shift_id'], (float) $data['counted'], auth()->id(), $data['notes'] ?? null);
         } catch (\RuntimeException $e) {
             return back()->withErrors(['shift' => $e->getMessage()]);
         }
 
-        return back()->with('status', "تم قفل الوردية — الفرق: {$diff}");
+        // Strict lock: terminate the session after closing.
+        auth()->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('login')->with('status', 'تم إغلاق الشيفت بنجاح، وتم تسجيل خروجك من النظام.');
     }
 
     public function sales(): View
     {
-        $sales = Sale::with('cashier')->orderByDesc('id')->paginate(20);
+        $sales = Sale::with('cashierUser')->orderByDesc('id')->paginate(20);
 
         return view('sales.index', compact('sales'));
     }
@@ -118,14 +124,14 @@ class PosController
     public function salesExport()
     {
         $filename = 'sales-'.now()->format('Y-m-d').'.csv';
-        $sales = Sale::with('cashier')->orderBy('no')->get();
+        $sales = Sale::with('cashierUser')->orderBy('no')->get();
 
         return response()->streamDownload(function () use ($sales) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, ['رقم', 'الكاشير', 'الإجمالي', 'نقدي', 'فيزا', 'الباقي', 'التاريخ']);
             foreach ($sales as $s) {
-                fputcsv($out, [$s->no, $s->cashier?->name, $s->total, $s->paid_cash, $s->paid_card, $s->change, $s->at]);
+                fputcsv($out, [$s->no, $s->cashierUser?->name, $s->total, $s->paid_cash, $s->paid_card, $s->change, $s->at]);
             }
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);

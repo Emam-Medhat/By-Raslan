@@ -27,7 +27,7 @@
                 @forelse ($recentSales as $sale)
                     <tr>
                         <td class="px-4 py-2">#{{ $sale->no }}</td>
-                        <td class="px-4 py-2 text-slate-500">{{ $sale->cashier?->name }}</td>
+                        <td class="px-4 py-2 text-slate-500">{{ $sale->cashierUser?->name }}</td>
                         <td class="px-4 py-2 font-semibold text-left">{{ $sale->total }} ج</td>
                     </tr>
                 @empty

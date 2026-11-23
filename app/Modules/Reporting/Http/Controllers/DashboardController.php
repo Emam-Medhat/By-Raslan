@@ -21,7 +21,7 @@ class DashboardController
             'boxes_in_stock' => Box::where('status', 'stock')->count(),
         ];
 
-        $recentSales = Sale::with('cashier')->orderByDesc('id')->take(5)->get();
+        $recentSales = Sale::with('cashierUser')->orderByDesc('id')->take(5)->get();
         $recentOrders = OnlineOrder::with('customer')->orderByDesc('id')->take(5)->get();
 
         return view('dashboard', compact('stats', 'recentSales', 'recentOrders'));

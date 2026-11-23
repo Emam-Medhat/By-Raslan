@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'perm' => CheckPermission::class,
             'active' => EnsureActive::class,
+            'shift' => \App\Modules\Sales\Http\Middleware\EnsureActiveShift::class,
         ]);
 
         // Public customer API endpoints are stateless (no CSRF).

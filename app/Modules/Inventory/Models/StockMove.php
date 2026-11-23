@@ -22,7 +22,7 @@ class StockMove extends Model
     public const KINDS = ['pack', 'receive', 'sale', 'transfer', 'adjust', 'waste', 'donate', 'count', 'return', 'production'];
 
     protected $fillable = [
-        'item_id', 'location_id', 'qty', 'kind', 'reason', 'ref', 'box_sn', 'unit_cost', 'by',
+        'item_id', 'location_id', 'qty', 'kind', 'reason', 'ref', 'box_sn', 'unit_cost', 'by', 'shift_id',
     ];
 
     protected function casts(): array

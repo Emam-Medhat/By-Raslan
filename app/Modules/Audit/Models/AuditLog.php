@@ -14,7 +14,7 @@ class AuditLog extends Model
 
     protected $table = 'audit_log';
 
-    protected $fillable = ['by', 'action', 'table_name', 'record_id', 'old', 'new'];
+    protected $fillable = ['by', 'action', 'table_name', 'record_id', 'old', 'new', 'shift_id'];
 
     protected function casts(): array
     {

@@ -356,6 +356,7 @@ class PosService
                 $move['ref'] = 'S'.$sale->no;
                 $move['by'] = $userId;
                 $move['at'] = now();
+                $move['shift_id'] = $shift->id;
             }
             unset($move);
             StockMove::insert($moves);
@@ -364,9 +365,9 @@ class PosService
         });
     }
 
-    public function closeShift(int $shiftId, float $counted, string $userId): float
+    public function closeShift(int $shiftId, float $counted, string $userId, ?string $notes = null): float
     {
-        return DB::transaction(function () use ($shiftId, $counted, $userId) {
+        return DB::transaction(function () use ($shiftId, $counted, $userId, $notes) {
             $shift = Shift::where('id', $shiftId)->where('status', 'open')->lockForUpdate()->first();
 
             if (! $shift) {
@@ -387,9 +388,12 @@ class PosService
             $shift->update([
                 'status' => 'closed',
                 'open_cashier' => null,
+                'closed_by' => $userId,
                 'closed_at' => now(),
+                'logged_out_at' => now(),
                 'counted_cash' => $counted,
                 'expected_cash' => $expected,
+                'close_notes' => $notes,
             ]);
 
             return round($counted - $expected, 2);

@@ -30,6 +30,18 @@
             <input type="checkbox" name="active" checked class="rounded"> حساب مفعّل
         </label>
 
+        @if(isset($roles))
+            <div>
+                <label class="block text-sm font-semibold mb-1">الدور (اختياري)</label>
+                <select name="role_id" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                    <option value="">— بدون دور —</option>
+                    @foreach ($roles as $role)
+                        <option value="{{ $role->id }}">{{ $role->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+        @endif
+
         <div>
             <div class="text-sm font-semibold mb-2">الصلاحيات المباشرة</div>
             <div class="grid gap-2 sm:grid-cols-2">

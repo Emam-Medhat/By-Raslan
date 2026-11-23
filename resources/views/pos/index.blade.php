@@ -30,6 +30,7 @@
     {{-- Open shift: POS terminal --}}
     <template x-if="shift">
         <div>
+        <div>
             {{-- Shift bar --}}
             <div class="flex flex-wrap items-center justify-between gap-3 bg-white rounded-xl border border-slate-200 px-4 py-2.5">
                 <div class="flex items-center gap-4 text-sm">
@@ -38,13 +39,7 @@
                     <span class="text-slate-500">رصيد البداية: <b class="text-slate-800" x-text="shift.opening_cash"></b></span>
                 </div>
                 <div class="flex items-center gap-2">
-                    <input x-model.number="counted" type="number" step="0.01" min="0" placeholder="النقد المعدود" class="w-32 rounded-lg border border-slate-300 px-2 py-1 text-sm">
-                    <form method="POST" action="{{ route('pos.close') }}">
-                        @csrf
-                        <input type="hidden" name="shift_id" :value="shift.id">
-                        <input type="hidden" name="counted" :value="counted">
-                        <button class="bg-rose-600 hover:bg-rose-700 text-white rounded-lg px-3 py-1.5 text-sm font-bold">قفل الوردية</button>
-                    </form>
+                    <button @click="closeModal = true" class="bg-rose-600 hover:bg-rose-700 text-white rounded-lg px-3 py-1.5 text-sm font-bold">إغلاق الشيفت</button>
                 </div>
             </div>
 
@@ -167,6 +162,33 @@
                 </div>
             </div>
         </div>
+    {{-- Close shift modal --}}
+        <div x-show="closeModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @keydown.escape.window="closeModal = false">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+                <div class="bg-emerald-600 text-white px-5 py-4 flex items-center gap-3">
+                    <span class="text-xl">🔒</span>
+                    <h3 class="font-bold">إغلاق الشيفت</h3>
+                </div>
+                <form method="POST" action="{{ route('pos.close') }}" class="p-5 space-y-4">
+                    @csrf
+                    <input type="hidden" name="shift_id" value="{{ $openShift?->id }}">
+                    <p class="text-sm text-slate-500">أدخل النقد المعدود الفعلي في نهاية الشيفت.</p>
+                    <div>
+                        <label class="block text-sm font-semibold mb-1">الرصيد المعدود</label>
+                        <input name="counted" x-model.number="counted" type="number" step="0.01" min="0" required class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold mb-1">ملاحظات (اختياري)</label>
+                        <textarea name="notes" x-model="closeNotes" rows="2" class="w-full rounded-lg border border-slate-300 px-3 py-2"></textarea>
+                    </div>
+                    <div class="flex gap-3">
+                        <button type="submit" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg py-2 font-bold">تأكيد الإغلاق</button>
+                        <button type="button" @click="closeModal = false" class="px-4 py-2 rounded-lg border border-slate-300">إلغاء</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
     </template>
 </div>
 
@@ -182,6 +204,8 @@
             cash: 0,
             card: 0,
             counted: 0,
+            closeModal: false,
+            closeNotes: '',
             busy: false,
             error: '',
             searchResults: [],

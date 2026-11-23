@@ -45,7 +45,22 @@ class LoginController
 
         RateLimiter::clear($throttleKey);
         $request->session()->regenerate();
-        $this->audit->log('login', 'users', $request->user()->id);
+
+        $user = $request->user();
+        $this->audit->log('login', 'users', $user->id);
+
+        // Automatic shift opening for non-owner users who can sell (cashiers).
+        // Owner is exempt (can do anything without a shift). Duplicate-safe.
+        if (! $user->isOwner() && $user->hasPermission('pos.sell')) {
+            $locationId = $user->home_location_id
+                ?: \App\Modules\Organization\Models\Location::whereIn('type', ['dark', 'shop'])->where('active', true)->value('id');
+
+            $hasOpen = \App\Modules\Sales\Models\Shift::where('cashier', $user->id)->where('status', 'open')->exists();
+
+            if ($locationId && ! $hasOpen) {
+                app(\App\Modules\Sales\Services\PosService::class)->openShift($locationId, 0.0, $user->id);
+            }
+        }
 
         return redirect()->intended(route('dashboard'));
     }

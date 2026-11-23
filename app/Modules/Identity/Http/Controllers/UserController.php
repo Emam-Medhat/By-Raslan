@@ -5,6 +5,7 @@ namespace App\Modules\Identity\Http\Controllers;
 use App\Models\User;
 use App\Modules\Identity\Http\Requests\StoreUserRequest;
 use App\Modules\Identity\Models\Permission;
+use App\Modules\Identity\Models\Role;
 use App\Modules\Identity\Services\PermissionService;
 use App\Shared\Support\Result;
 use Illuminate\Http\RedirectResponse;
@@ -29,8 +30,9 @@ class UserController
     public function create(): View
     {
         $permissions = Permission::orderBy('grp')->orderBy('id')->get();
+        $roles = Role::orderBy('name')->get();
 
-        return view('users.create', compact('permissions'));
+        return view('users.create', compact('permissions', 'roles'));
     }
 
     public function edit(User $user): View
@@ -73,6 +75,10 @@ class UserController
             'password' => Hash::make($data['password']),
             'active' => $data['active'] ?? true,
         ]);
+
+        if (! empty($data['role_id'])) {
+            $user->roles()->sync([(int) $data['role_id']]);
+        }
 
         // Grant any permissions submitted with the new user (anti-escalation applies).
         foreach ((array) $request->input('permissions', []) as $perm) {
