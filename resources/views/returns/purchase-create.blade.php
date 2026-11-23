@@ -1,0 +1,45 @@
+@extends('layouts.app')
+
+@section('title', 'مرتجع مورد')
+@section('page-title', 'مرتجع إلى مورد')
+
+@section('content')
+<div x-data="{ rows: [{ item_id: '', qty: '', cost: '' }] }" class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+    <form method="POST" action="{{ route('purchase-returns.store') }}" class="space-y-4">
+        @csrf
+        <div class="grid gap-4 sm:grid-cols-2">
+            <select name="supplier_id" class="rounded-lg border border-slate-300 px-3 py-2">
+                @foreach ($suppliers as $supplier)
+                    <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
+                @endforeach
+            </select>
+            <input name="reason" placeholder="السبب" class="rounded-lg border border-slate-300 px-3 py-2">
+        </div>
+
+        <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-slate-500">
+                <tr><th class="text-right px-2 py-2">الصنف</th><th class="text-right px-2 py-2">الكمية</th><th class="text-right px-2 py-2">التكلفة</th><th></th></tr>
+            </thead>
+            <tbody>
+                <template x-for="(row, i) in rows" :key="i">
+                    <tr>
+                        <td class="px-2 py-1">
+                            <select :name="`lines[${i}][item_id]`" x-model="row.item_id" class="w-full rounded border border-slate-300 px-2 py-1">
+                                <option value="">—</option>
+                                @foreach ($items as $item)
+                                    <option value="{{ $item->id }}">{{ $item->name }}</option>
+                                @endforeach
+                            </select>
+                        </td>
+                        <td class="px-2 py-1"><input type="number" step="0.001" :name="`lines[${i}][qty]`" x-model="row.qty" class="w-24 rounded border border-slate-300 px-2 py-1"></td>
+                        <td class="px-2 py-1"><input type="number" step="0.01" :name="`lines[${i}][cost]`" x-model="row.cost" class="w-24 rounded border border-slate-300 px-2 py-1"></td>
+                        <td class="px-2 py-1"><button type="button" @click="rows.splice(i,1)" class="text-rose-600">حذف</button></td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+        <button type="button" @click="rows.push({ item_id: '', qty: '', cost: '' })" class="text-brand-700 underline text-sm">+ إضافة بند</button>
+        <button class="bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-5 py-2 font-bold">تسجيل</button>
+    </form>
+</div>
+@endsection
