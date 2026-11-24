@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class ExpenseCategory extends Model
 {
+    public $timestamps = false;
+
     protected $fillable = ['name', 'active'];
 
     protected function casts(): array

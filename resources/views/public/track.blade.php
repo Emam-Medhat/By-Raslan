@@ -12,7 +12,7 @@
     $sub = $order->lines->sum($lineTotal);
 @endphp
 <div class="max-w-3xl mx-auto p-4 space-y-4">
-    <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <div class="ds-card p-5">
         <div class="flex items-center justify-between gap-3 mb-4">
             <h1 class="text-2xl font-bold">طلب رقم {{ $order->no }}</h1>
             <span class="text-sm text-slate-500">{{ $order->location?->name ?? $order->location_id }}</span>

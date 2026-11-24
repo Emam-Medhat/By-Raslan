@@ -4,13 +4,13 @@
 
 @section('content')
 <div class="max-w-5xl mx-auto p-4 space-y-4">
-    <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap gap-3 items-center justify-between">
+    <div class="ds-card p-4 flex flex-wrap gap-3 items-center justify-between">
         <div>
             <h1 class="text-2xl font-bold">اطلب أونلاين</h1>
             <p class="text-slate-500 text-sm">اختار الفرع والمنتجات وسيب بيانات التوصيل</p>
         </div>
         <form method="GET" action="{{ route('public.order') }}">
-            <select name="location" onchange="this.form.submit()" class="rounded-lg border border-slate-300 px-3 py-2">
+            <select name="location" onchange="this.form.submit()" class="ds-input">
                 @foreach ($branches as $b)
                     <option value="{{ $b['id'] }}" @selected($location === $b['id'])>{{ $b['name'] }} — توصيل {{ $b['fee'] }} ج</option>
                 @endforeach
@@ -19,7 +19,7 @@
     </div>
 
     <div class="grid lg:grid-cols-3 gap-4">
-        <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
+        <div class="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-4">
             <h2 class="font-bold mb-3">المنيو</h2>
             <div class="space-y-2" id="menu">
                 @forelse ($menu as $m)
@@ -36,20 +36,20 @@
             </div>
         </div>
 
-        <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="ds-card p-4">
             <h2 class="font-bold mb-3">بيانات الطلب</h2>
             <div class="space-y-2">
-                <input id="name" placeholder="الاسم" class="w-full rounded-lg border border-slate-300 px-3 py-2">
-                <input id="phone" placeholder="الموبايل" class="w-full rounded-lg border border-slate-300 px-3 py-2">
-                <input id="address" placeholder="العنوان" class="w-full rounded-lg border border-slate-300 px-3 py-2">
-                <input id="area" placeholder="المنطقة" class="w-full rounded-lg border border-slate-300 px-3 py-2">
-                <select id="pay" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                <input id="name" placeholder="الاسم" class="w-full ds-input">
+                <input id="phone" placeholder="الموبايل" class="w-full ds-input">
+                <input id="address" placeholder="العنوان" class="w-full ds-input">
+                <input id="area" placeholder="المنطقة" class="w-full ds-input">
+                <select id="pay" class="w-full ds-input">
                     <option value="cash">كاش</option>
                     <option value="card">فيزا عند الاستلام</option>
                     <option value="instapay">إنستاباي</option>
                 </select>
-                <textarea id="note" placeholder="ملاحظة" class="w-full rounded-lg border border-slate-300 px-3 py-2"></textarea>
-                <button id="placeBtn" class="w-full bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-4 py-2 font-bold">تأكيد الطلب</button>
+                <textarea id="note" placeholder="ملاحظة" class="w-full ds-input"></textarea>
+                <button id="placeBtn" class="w-full ds-btn ds-btn-primary rounded-lg px-4 py-2 font-bold">تأكيد الطلب</button>
                 <div id="msg" class="text-sm"></div>
             </div>
         </div>

@@ -5,7 +5,7 @@
 
 @section('content')
 <div class="space-y-4">
-    <div class="bg-white rounded-xl border border-slate-200 p-5 grid gap-2 sm:grid-cols-4">
+    <div class="ds-card p-5 grid gap-2 sm:grid-cols-4">
         <div><div class="text-xs text-slate-500">العميل</div><div class="font-semibold">{{ $order->customer?->name }}</div></div>
         <div><div class="text-xs text-slate-500">الحالة</div><div class="font-semibold">{{ $order->status }}</div></div>
         <div><div class="text-xs text-slate-500">الفرع</div><div class="font-semibold">{{ $order->location_id }}</div></div>
@@ -13,7 +13,7 @@
     </div>
 
     @can('orders.handle')
-        <div class="bg-white rounded-xl border border-slate-200 p-5 grid gap-4 lg:grid-cols-3">
+        <div class="ds-card p-5 grid gap-4 lg:grid-cols-3">
             <div>
                 <h3 class="font-bold mb-2">نقل الحالة</h3>
                 <form method="POST" action="{{ route('orders.status', $order) }}" class="space-y-2">
@@ -24,7 +24,7 @@
                         @endforeach
                     </select>
                     <input name="driver" placeholder="اسم الطيار (للخروج)" class="w-full rounded border border-slate-300 px-2 py-1">
-                    <button class="bg-brand-600 text-white rounded px-3 py-1 text-sm">تحديث</button>
+                    <button class="ds-btn ds-btn-primary rounded px-3 py-1 text-sm">تحديث</button>
                 </form>
                 @can('orders.cancel')
                     <form method="POST" action="{{ route('orders.status', $order) }}" class="mt-2 flex gap-2">
@@ -41,7 +41,7 @@
                 <form method="POST" action="{{ route('orders.scan', $order) }}" class="space-y-2">
                     @csrf
                     <input name="code" placeholder="امسح QR/باركود" class="w-full rounded border border-slate-300 px-2 py-1" dir="ltr">
-                    <button class="bg-emerald-600 text-white rounded px-3 py-1 text-sm">تحضير</button>
+                    <button class="ds-btn ds-btn-accent rounded px-3 py-1 text-sm">تحضير</button>
                 </form>
                 <form method="POST" action="{{ route('orders.unscan', $order) }}" class="mt-2 flex gap-2">
                     @csrf
@@ -54,15 +54,15 @@
                 <h3 class="font-bold mb-2">تسليم وتحصيل</h3>
                 <form method="POST" action="{{ route('orders.deliver', $order) }}">
                     @csrf
-                    <button class="w-full bg-rose-600 text-white rounded px-3 py-2 font-bold">تسليم</button>
+                    <button class="w-full ds-btn ds-btn-danger bg-red-600 text-white border-red-600 hover:bg-red-700 rounded px-3 py-2 font-bold">تسليم</button>
                 </form>
             </div>
         </div>
     @endcan
 
-    <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+    <div class="ds-card overflow-x-auto">
         <table class="w-full text-sm">
-            <thead class="bg-slate-50 text-slate-500">
+            <thead class="bg-slate-50/80 text-slate-500">
                 <tr><th class="text-right px-4 py-3">الصنف</th><th class="text-right px-4 py-3">المطلوب</th><th class="text-right px-4 py-3">المحضّر</th><th class="text-right px-4 py-3">السعر</th></tr>
             </thead>
             <tbody class="divide-y divide-slate-100">

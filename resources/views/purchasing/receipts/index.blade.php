@@ -4,9 +4,9 @@
 @section('page-title', 'إذونات الاستلام')
 
 @section('content')
-<div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+<div class="ds-card overflow-x-auto">
     <table class="w-full text-sm">
-        <thead class="bg-slate-50 text-slate-500">
+        <thead class="bg-slate-50/80 text-slate-500">
             <tr>
                 <th class="text-right px-4 py-3">رقم</th>
                 <th class="text-right px-4 py-3">المورد</th>
@@ -18,7 +18,7 @@
         <tbody class="divide-y divide-slate-100">
             @forelse ($receipts as $receipt)
                 <tr>
-                    <td class="px-4 py-3 font-semibold"><a class="text-brand-700 underline" href="{{ route('purchasing.receipts.show', $receipt) }}">{{ $receipt->no }}</a></td>
+                    <td class="px-4 py-3 font-semibold"><a class="text-primary-800 font-semibold hover:text-accent-600 underline decoration-slate-300" href="{{ route('purchasing.receipts.show', $receipt) }}">{{ $receipt->no }}</a></td>
                     <td class="px-4 py-3">{{ $receipt->supplier?->name }}</td>
                     <td class="px-4 py-3">{{ $receipt->result }}</td>
                     <td class="px-4 py-3">{{ $receipt->invoice_no ?? '—' }}</td>

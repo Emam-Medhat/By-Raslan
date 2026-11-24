@@ -19,7 +19,16 @@ class PosController
 
     public function index(): View
     {
-        $openShift = Shift::where('cashier', auth()->id())->where('status', 'open')->first();
+        $openShift = Shift::with(['location:id,name', 'cashierUser:id,name'])
+            ->where('cashier', auth()->id())
+            ->where('status', 'open')
+            ->first();
+
+        if ($openShift) {
+            $openShift->setAttribute('location_name', $openShift->location?->name);
+            $openShift->setAttribute('cashier_name', $openShift->cashierUser?->name);
+        }
+
         $locations = Location::whereIn('type', ['dark', 'shop'])->orderBy('name')->get();
 
         return view('pos.index', compact('openShift', 'locations'));

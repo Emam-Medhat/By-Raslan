@@ -4,21 +4,21 @@
 @section('page-title', 'أمر توريد جديد')
 
 @section('content')
-<div x-data="{ rows: [{ item_id: '', qty: '', price: '' }] }" class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+<div x-data="{ rows: [{ item_id: '', qty: '', price: '' }] }" class="ds-card p-6 space-y-4">
     <form method="POST" action="{{ route('purchasing.store') }}" class="space-y-4">
         @csrf
         <div class="grid gap-4 sm:grid-cols-3">
-            <select name="supplier_id" class="rounded-lg border border-slate-300 px-3 py-2">
+            <select name="supplier_id" class="ds-input">
                 @foreach ($suppliers as $supplier)
                     <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
                 @endforeach
             </select>
-            <input name="expected" type="date" class="rounded-lg border border-slate-300 px-3 py-2">
-            <input name="note" placeholder="ملاحظة" class="rounded-lg border border-slate-300 px-3 py-2">
+            <input name="expected" type="date" class="ds-input">
+            <input name="note" placeholder="ملاحظة" class="ds-input">
         </div>
 
         <table class="w-full text-sm">
-            <thead class="bg-slate-50 text-slate-500">
+            <thead class="bg-slate-50/80 text-slate-500">
                 <tr><th class="text-right px-2 py-2">الصنف</th><th class="text-right px-2 py-2">الكمية</th><th class="text-right px-2 py-2">السعر</th><th></th></tr>
             </thead>
             <tbody>
@@ -39,9 +39,9 @@
                 </template>
             </tbody>
         </table>
-        <button type="button" @click="rows.push({ item_id: '', qty: '', price: '' })" class="text-brand-700 underline text-sm">+ إضافة بند</button>
+        <button type="button" @click="rows.push({ item_id: '', qty: '', price: '' })" class="text-primary-800 font-semibold hover:text-accent-600 underline decoration-slate-300 text-sm">+ إضافة بند</button>
 
-        <button class="bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-5 py-2 font-bold">حفظ الأمر</button>
+        <button class="ds-btn ds-btn-primary rounded-lg px-5 py-2 font-bold">حفظ الأمر</button>
     </form>
 </div>
 @endsection

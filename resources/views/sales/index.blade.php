@@ -4,40 +4,44 @@
 @section('page-title', 'المبيعات والفواتير')
 
 @section('content')
-<div class="flex justify-end mb-3">
-    @can('acc.view')
-        <a href="{{ route('sales.export') }}" class="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 hover:bg-slate-50">⬇ تصدير CSV</a>
-    @endcan
-</div>
-<div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
-    <table class="w-full text-sm">
-        <thead class="bg-slate-50 text-slate-500">
-            <tr>
-                <th class="text-right px-4 py-3">رقم</th>
-                <th class="text-right px-4 py-3">الكاشير</th>
-                <th class="text-right px-4 py-3">الإجمالي</th>
-                <th class="text-right px-4 py-3">نقدي</th>
-                <th class="text-right px-4 py-3">فيزا</th>
-                <th class="text-right px-4 py-3">الباقي</th>
-                <th class="text-right px-4 py-3">التاريخ</th>
-            </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-            @forelse ($sales as $sale)
+<div class="space-y-4">
+    <div class="flex justify-end">
+        @can('acc.view')
+            <a href="{{ route('sales.export') }}" class="ds-btn ds-btn-secondary ds-btn-sm">⬇ تصدير CSV</a>
+        @endcan
+    </div>
+
+    <div class="ds-table-wrap">
+        <table class="ds-table">
+            <thead>
                 <tr>
-                    <td class="px-4 py-3 font-semibold">{{ $sale->no }}</td>
-                    <td class="px-4 py-3">{{ $sale->cashierUser?->name }}</td>
-                    <td class="px-4 py-3">{{ $sale->total }}</td>
-                    <td class="px-4 py-3">{{ $sale->paid_cash }}</td>
-                    <td class="px-4 py-3">{{ $sale->paid_card }}</td>
-                    <td class="px-4 py-3">{{ $sale->change }}</td>
-                    <td class="px-4 py-3">{{ $sale->at }}</td>
+                    <th>رقم</th>
+                    <th>الكاشير</th>
+                    <th>الإجمالي</th>
+                    <th>نقدي</th>
+                    <th>فيزا</th>
+                    <th>الباقي</th>
+                    <th>التاريخ</th>
                 </tr>
-            @empty
-                <tr><td colspan="7" class="px-4 py-6 text-center text-slate-400">لا توجد مبيعات</td></tr>
-            @endforelse
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @forelse ($sales as $sale)
+                    <tr>
+                        <td class="font-semibold">{{ $sale->no }}</td>
+                        <td>{{ $sale->cashierUser?->name }}</td>
+                        <td class="num font-bold">{{ number_format($sale->total, 2) }}</td>
+                        <td class="num">{{ number_format($sale->paid_cash, 2) }}</td>
+                        <td class="num">{{ number_format($sale->paid_card, 2) }}</td>
+                        <td class="num">{{ number_format($sale->change, 2) }}</td>
+                        <td class="num" style="font-size: 12px;">{{ $sale->at }}</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="7" class="ds-empty">لا توجد مبيعات</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-4">{{ $sales->links() }}</div>
 </div>
-<div class="mt-4">{{ $sales->links() }}</div>
 @endsection

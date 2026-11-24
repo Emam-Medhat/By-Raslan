@@ -6,31 +6,31 @@
 @section('content')
 <div class="grid gap-4 lg:grid-cols-2">
     @can('purchase.edit')
-        <div class="bg-white rounded-xl border border-slate-200 p-5">
+        <div class="ds-card p-5">
             <h3 class="font-bold mb-3">إضافة نسخة مواصفة معتمدة</h3>
             <form method="POST" action="{{ route('purchasing.specs.save', ['item' => 0]) }}"
                   onsubmit="this.action = this.action.replace('/specs/0', '/specs/' + this.item_id.value);"
                   class="space-y-3">
                 @csrf
-                <select name="item_id" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                <select name="item_id" class="w-full ds-input">
                     @foreach ($items as $item)
                         <option value="{{ $item->id }}">{{ $item->name }}</option>
                     @endforeach
                 </select>
-                <textarea name="checks[]" rows="2" placeholder="بنود الفحص (كل سطر بند)" class="w-full rounded-lg border border-slate-300 px-3 py-2"></textarea>
-                <textarea name="certs[]" rows="2" placeholder="المستندات المطلوبة (كل سطر مستند)" class="w-full rounded-lg border border-slate-300 px-3 py-2"></textarea>
+                <textarea name="checks[]" rows="2" placeholder="بنود الفحص (كل سطر بند)" class="w-full ds-input"></textarea>
+                <textarea name="certs[]" rows="2" placeholder="المستندات المطلوبة (كل سطر مستند)" class="w-full ds-input"></textarea>
                 <div class="grid grid-cols-2 gap-2">
-                    <input name="temp_max" type="number" step="0.1" placeholder="أقصى حرارة" class="rounded-lg border border-slate-300 px-3 py-2">
-                    <input name="min_shelf_days" type="number" placeholder="أقل صلاحية (يوم)" class="rounded-lg border border-slate-300 px-3 py-2">
+                    <input name="temp_max" type="number" step="0.1" placeholder="أقصى حرارة" class="ds-input">
+                    <input name="min_shelf_days" type="number" placeholder="أقل صلاحية (يوم)" class="ds-input">
                 </div>
-                <button class="bg-brand-600 text-white rounded-lg px-4 py-2 font-bold">حفظ واعتماد</button>
+                <button class="ds-btn ds-btn-primary">حفظ واعتماد</button>
             </form>
         </div>
     @endcan
 
-    <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+    <div class="ds-card overflow-x-auto">
         <table class="w-full text-sm">
-            <thead class="bg-slate-50 text-slate-500">
+            <thead class="bg-slate-50/80 text-slate-500">
                 <tr>
                     <th class="text-right px-4 py-3">الصنف</th>
                     <th class="text-right px-4 py-3">النسخة</th>

@@ -14,11 +14,13 @@ class Shift extends Model
 {
     public $timestamps = false;
 
-    public const STATUSES = ['open', 'closed'];
+    public const STATUSES = ['open', 'paused', 'closed'];
 
     protected $fillable = [
         'location_id', 'pos_terminal', 'cashier', 'closed_by', 'opened_at', 'opening_cash',
-        'closed_at', 'logged_out_at', 'counted_cash', 'expected_cash', 'close_notes', 'status', 'open_cashier',
+        'closed_at', 'logged_out_at', 'counted_cash', 'expected_cash', 'close_notes',
+        'expenses_total', 'sent_to_manager', 'carryover_to_next_shift', 'notes',
+        'status', 'open_cashier',
     ];
 
     protected function casts(): array
@@ -30,6 +32,9 @@ class Shift extends Model
             'opening_cash' => 'decimal:2',
             'counted_cash' => 'decimal:2',
             'expected_cash' => 'decimal:2',
+            'expenses_total' => 'decimal:2',
+            'sent_to_manager' => 'decimal:2',
+            'carryover_to_next_shift' => 'decimal:2',
         ];
     }
 
@@ -61,6 +66,24 @@ class Shift extends Model
     public function expenses(): HasMany
     {
         return $this->hasMany(Expense::class, 'shift_id');
+    }
+
+    /** Shift-specific expenses (with approval workflow). */
+    public function shiftExpenses(): HasMany
+    {
+        return $this->hasMany(ShiftExpense::class);
+    }
+
+    /** Cash transfers outgoing from this shift. */
+    public function cashTransfers(): HasMany
+    {
+        return $this->hasMany(CashTransfer::class, 'from_shift_id');
+    }
+
+    /** Cash transfers incoming to this shift. */
+    public function incomingTransfers(): HasMany
+    {
+        return $this->hasMany(CashTransfer::class, 'to_shift_id');
     }
 
     public function workingSeconds(): int

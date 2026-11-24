@@ -3,12 +3,13 @@
 namespace App\Models;
 
 use App\Modules\Identity\Models\Permission;
-use App\Modules\Identity\Models\Role;
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
+    use App\Modules\Identity\Models\Role;
+    use App\Modules\Organization\Models\Location;
+    use Illuminate\Database\Eloquent\Concerns\HasUuids;
+    use Illuminate\Database\Eloquent\Factories\HasFactory;
+    use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+    use Illuminate\Foundation\Auth\User as Authenticatable;
+    use Illuminate\Notifications\Notifiable;
 
 /**
  * Staff user (Identity aggregate root).
@@ -58,6 +59,14 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(Permission::class)
             ->withPivot(['until', 'max_amount', 'granted_by'])
+            ->withTimestamps();
+    }
+
+    /** Locations this user is assigned to (with role + per-location permissions). */
+    public function locations(): BelongsToMany
+    {
+        return $this->belongsToMany(Location::class, 'location_user')
+            ->withPivot(['role', 'is_primary', 'permissions', 'assigned_by'])
             ->withTimestamps();
     }
 

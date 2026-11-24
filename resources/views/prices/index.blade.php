@@ -5,31 +5,31 @@
 
 @section('content')
 <div class="space-y-4">
-    <form method="POST" action="{{ route('prices.save') }}" class="bg-white rounded-xl border border-slate-200 p-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <form method="POST" action="{{ route('prices.save') }}" class="ds-card p-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         @csrf
-        <select name="item_id" class="rounded-lg border border-slate-300 px-3 py-2 lg:col-span-2">
+        <select name="item_id" class="ds-input lg:col-span-2">
             @foreach ($items as $item)
                 <option value="{{ $item->id }}">{{ $item->name }}</option>
             @endforeach
         </select>
-        <select name="location_id" class="rounded-lg border border-slate-300 px-3 py-2">
+        <select name="location_id" class="ds-input">
             @foreach ($locations as $location)
                 <option value="{{ $location->id }}">{{ $location->name }}</option>
             @endforeach
         </select>
-        <select name="channel" class="rounded-lg border border-slate-300 px-3 py-2">
+        <select name="channel" class="ds-input">
             <option value="direct">فرع مباشر</option>
             <option value="app">تطبيق</option>
         </select>
         <div class="flex gap-2">
-            <input name="price" type="number" step="0.01" min="0" placeholder="السعر" class="w-full rounded-lg border border-slate-300 px-3 py-2">
-            <button class="bg-brand-600 text-white rounded-lg px-4 py-2 font-bold whitespace-nowrap">حفظ</button>
+            <input name="price" type="number" step="0.01" min="0" placeholder="السعر" class="w-full ds-input">
+            <button class="ds-btn ds-btn-primary rounded-lg px-4 py-2 font-bold whitespace-nowrap">حفظ</button>
         </div>
     </form>
 
-    <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+    <div class="ds-card overflow-x-auto">
         <table class="w-full text-sm">
-            <thead class="bg-slate-50 text-slate-500">
+            <thead class="bg-slate-50/80 text-slate-500">
                 <tr>
                     <th class="text-right px-4 py-3">الصنف</th>
                     <th class="text-right px-4 py-3">الموقع</th>

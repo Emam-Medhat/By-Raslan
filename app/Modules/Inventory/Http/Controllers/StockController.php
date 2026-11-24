@@ -31,6 +31,19 @@ class StockController
             'location_id' => ['required', 'exists:locations,id'],
             'qty' => ['required', 'numeric'],
             'note' => ['nullable', 'string', 'max:255'],
+        ], [
+            'item_id.required' => 'اختر الصنف.',
+            'item_id.exists' => 'الصنف المختار غير موجود.',
+            'location_id.required' => 'اختر الموقع.',
+            'location_id.exists' => 'الموقع المختار غير موجود.',
+            'qty.required' => 'أدخل الكمية (موجبة للإضافة، سالبة للخصم).',
+            'qty.numeric' => 'الكمية يجب أن تكون رقمًا.',
+            'note.max' => 'السبب أطول من المسموح (255 حرف).',
+        ], [
+            'item_id' => 'الصنف',
+            'location_id' => 'الموقع',
+            'qty' => 'الكمية',
+            'note' => 'السبب',
         ]);
 
         $this->stock->adjust(

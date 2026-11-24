@@ -4,64 +4,119 @@
 @section('page-title', 'تتبّع العلبة')
 
 @section('content')
+@php
+    $statusLabels = ['stock'=>'بالمخزون','loaded'=>'محمّلة','sold'=>'مباعة','waste'=>'هالك','donated'=>'متبرع بها','missing'=>'ناقصة'];
+    $statusBadge = fn($s) => match($s) {
+        'stock' => 'ds-badge-success',
+        'loaded', 'transit' => 'ds-badge-warning',
+        'sold' => 'ds-badge-primary',
+        'waste', 'missing', 'lost' => 'ds-badge-danger',
+        'donated' => 'ds-badge-accent',
+        default => 'ds-badge-neutral',
+    };
+@endphp
 <div class="space-y-4">
-    <form method="GET" action="{{ route('boxes.index') }}" class="flex gap-2 max-w-md">
-        <input name="sn" value="{{ $sn }}" placeholder="رقم العلبة" class="flex-1 rounded-lg border border-slate-300 px-3 py-2">
-        <button class="bg-brand-600 text-white rounded-lg px-4 py-2 font-bold">بحث</button>
-    </form>
+    <div class="ds-card p-5">
+        <form method="GET" action="{{ route('boxes.index') }}" class="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div class="flex-1">
+                <label class="ds-label">رقم العلبة (SN)</label>
+                <div class="relative">
+                    <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400"><x-icon name="barcode" size="16" /></span>
+                    <input name="sn" value="{{ $sn }}" placeholder="أدخل رقم العلبة..." class="ds-input pr-10" dir="ltr" autofocus>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <button class="ds-btn ds-btn-primary px-5">بحث</button>
+                @if($sn)
+                    <a href="{{ route('boxes.index') }}" class="ds-btn ds-btn-secondary px-4">مسح</a>
+                @endif
+            </div>
+        </form>
+    </div>
 
     @if ($sn && ! $box)
-        <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm">لا توجد علبة بالرقم {{ $sn }}</div>
+        <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center gap-2">
+            <x-icon name="alert-triangle" size="16" />
+            لا توجد علبة بالرقم <span class="font-bold" dir="ltr">{{ $sn }}</span>
+        </div>
     @endif
 
     @if ($box)
-        <div class="bg-white rounded-xl border border-slate-200 p-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <div><div class="text-xs text-slate-500">الصنف</div><div class="font-semibold">{{ $box->item?->name }}</div></div>
-            <div><div class="text-xs text-slate-500">الوزن</div><div class="font-semibold">{{ $box->weight }}</div></div>
-            <div><div class="text-xs text-slate-500">الموقع</div><div class="font-semibold">{{ $box->location_id }}</div></div>
-            <div><div class="text-xs text-slate-500">الحالة</div><div class="font-semibold">{{ $box->status }}</div></div>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="ds-kpi">
+                <div class="ds-kpi-label">الصنف</div>
+                <div class="mt-1 font-bold text-primary-800">{{ $box->item?->name ?? '—' }}</div>
+            </div>
+            <div class="ds-kpi">
+                <div class="ds-kpi-label">الوزن</div>
+                <div class="mt-1 font-bold text-primary-800 num">{{ rtrim(rtrim(number_format((float)$box->weight, 3, '.', ''), '0'), '.') }}</div>
+            </div>
+            <div class="ds-kpi">
+                <div class="ds-kpi-label">الموقع</div>
+                <div class="mt-1 font-bold text-primary-800">{{ $box->location?->name ?? $box->location_id ?? '—' }}</div>
+            </div>
+            <div class="ds-kpi">
+                <div class="ds-kpi-label">الحالة</div>
+                <div class="mt-2"><span class="ds-badge {{ $statusBadge($box->status) }}">{{ $statusLabels[$box->status] ?? $box->status }}</span></div>
+            </div>
+        </div>
+
+        <div class="ds-card p-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+            <div><span class="text-slate-400">رقم العلبة:</span> <span class="font-semibold font-mono" dir="ltr">#{{ $box->sn }}</span></div>
+            <div><span class="text-slate-400">PLU الميزان:</span> <span class="font-semibold" dir="ltr">{{ $box->scale_code ?? '—' }}</span></div>
+            <div><span class="text-slate-400">تاريخ التعبئة:</span> <span class="font-semibold">{{ optional($box->packed_at)->format('Y-m-d H:i') ?? '—' }}</span></div>
+            <div><span class="text-slate-400">تاريخ الانتهاء:</span> <span class="font-semibold">{{ optional($box->expires_at)->format('Y-m-d') ?? '—' }}</span></div>
         </div>
 
         @if ($box->status === 'missing' && auth()->user()?->hasPermission('stock.adjust'))
-            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <div class="font-semibold text-amber-900 mb-3">العلبة متسجلة ناقصة — حسم الحالة</div>
-                <form method="POST" action="{{ route('boxes.resolve-missing') }}" class="flex flex-wrap gap-2 items-end">
+            <div class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <div class="font-bold text-amber-800 mb-3"><x-icon name="circle-alert" size="16" class="ml-1" /> العلبة متسجلة ناقصة — حسم الحالة</div>
+                <form method="POST" action="{{ route('boxes.resolve-missing') }}" class="flex flex-wrap gap-3 items-end">
                     @csrf
                     <input type="hidden" name="sn" value="{{ $box->sn }}">
-                    <label class="flex-1 min-w-48 text-sm">ملاحظة
-                        <input name="note" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
-                    </label>
-                    <button name="found" value="1" class="bg-emerald-600 text-white rounded-lg px-4 py-2 font-bold">اتلقت</button>
-                    <button name="found" value="0" class="bg-rose-600 text-white rounded-lg px-4 py-2 font-bold">ضاعت</button>
+                    <div class="flex-1 min-w-48">
+                        <label class="ds-label">ملاحظة</label>
+                        <input name="note" class="ds-input" placeholder="ملاحظة اختيارية">
+                    </div>
+                    <button name="found" value="1" class="ds-btn ds-btn-accent px-4"><x-icon name="check" size="16" class="ml-1" /> اتلقت</button>
+                    <button name="found" value="0" class="ds-btn ds-btn-danger px-4"><x-icon name="x" size="16" class="ml-1" /> ضاعت</button>
                 </form>
             </div>
         @endif
 
-        <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead class="bg-slate-50 text-slate-500">
-                    <tr>
-                        <th class="text-right px-4 py-3">التاريخ</th>
-                        <th class="text-right px-4 py-3">النوع</th>
-                        <th class="text-right px-4 py-3">الكمية</th>
-                        <th class="text-right px-4 py-3">الموقع</th>
-                        <th class="text-right px-4 py-3">السبب</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                    @forelse ($history as $move)
+        <div class="ds-card overflow-hidden">
+            <div class="ds-card-header">
+                <h2 class="ds-card-title"><x-icon name="history" size="16" class="ml-1 text-slate-400" /> سجل الحركة</h2>
+                <span class="ds-badge ds-badge-neutral">{{ $history->count() }} حركة</span>
+            </div>
+            <div class="ds-table-wrap border-0 rounded-none shadow-none">
+                <table class="ds-table">
+                    <thead>
                         <tr>
-                            <td class="px-4 py-3">{{ $move->at }}</td>
-                            <td class="px-4 py-3">{{ $move->kind }}</td>
-                            <td class="px-4 py-3">{{ $move->qty }}</td>
-                            <td class="px-4 py-3">{{ $move->location_id }}</td>
-                            <td class="px-4 py-3">{{ $move->reason ?? '—' }}</td>
+                            <th>التاريخ</th>
+                            <th>النوع</th>
+                            <th>الكمية</th>
+                            <th>الموقع</th>
+                            <th>المرجع</th>
+                            <th>السبب</th>
                         </tr>
-                    @empty
-                        <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">لا توجد حركات</td></tr>
-                    @endforelse
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @forelse ($history as $move)
+                            <tr>
+                                <td class="text-xs num" dir="ltr">{{ optional($move->at)->format('Y-m-d H:i') ?? $move->at }}</td>
+                                <td><span class="ds-badge ds-badge-neutral">{{ $move->kind }}</span></td>
+                                <td class="num font-semibold {{ (float)$move->qty < 0 ? 'text-red-600' : 'text-emerald-700' }}">{{ rtrim(rtrim(number_format((float)$move->qty, 3, '.', ''), '0'), '.') }}</td>
+                                <td>{{ $move->location?->name ?? $move->location_id }}</td>
+                                <td class="text-xs font-mono" dir="ltr">{{ $move->ref ?? '—' }}</td>
+                                <td class="text-xs text-slate-500">{{ $move->reason ?? '—' }}</td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="6" class="ds-empty">لا توجد حركات مسجلة لهذه العلبة</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
         </div>
     @endif
 </div>

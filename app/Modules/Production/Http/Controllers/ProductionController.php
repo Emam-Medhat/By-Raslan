@@ -19,16 +19,14 @@ class ProductionController
     public function index(): View
     {
         $orders = ProdOrder::with('item')->withCount('steps')->orderByDesc('id')->get();
+        $items = Item::orderBy('name')->get();
 
-        return view('production.index', compact('orders'));
+        return view('production.index', compact('orders', 'items'));
     }
 
-    public function create(): View
+    public function create(): RedirectResponse
     {
-        $items = Item::orderBy('name')->get();
-        $sections = Location::where('type', 'section')->orderBy('sort')->get();
-
-        return view('production.create', compact('items', 'sections'));
+        return redirect()->route('production.index', ['create' => 1]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -99,7 +97,7 @@ class ProductionController
 
     public function routes(): View
     {
-        $items = Item::orderBy('name')->get();
+        $items = Item::with(['routes' => fn ($q) => $q->orderBy('ver')->orderBy('step')])->orderBy('name')->get();
         $sections = Location::where('type', 'section')->orderBy('sort')->get();
 
         return view('production.routes', compact('items', 'sections'));

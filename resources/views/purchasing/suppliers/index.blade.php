@@ -8,21 +8,21 @@
     <div class="flex items-center justify-between">
         <h1 class="text-xl font-bold">الموردون</h1>
         @can('purchase.edit')
-            <button @click="show = !show" class="bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-4 py-2 text-sm font-bold">إضافة مورد</button>
+            <button @click="show = !show" class="ds-btn ds-btn-primary rounded-lg px-4 py-2 text-sm font-bold">إضافة مورد</button>
         @endcan
     </div>
 
-    <form x-show="show" x-cloak method="POST" action="{{ route('purchasing.suppliers.store') }}" class="bg-white rounded-xl border border-slate-200 p-5 grid gap-3 sm:grid-cols-3">
+    <form x-show="show" x-cloak method="POST" action="{{ route('purchasing.suppliers.store') }}" class="ds-card p-5 grid gap-3 sm:grid-cols-3">
         @csrf
-        <input name="name" placeholder="الاسم" class="rounded-lg border border-slate-300 px-3 py-2">
-        <input name="phone" placeholder="الموبايل" class="rounded-lg border border-slate-300 px-3 py-2">
-        <input name="terms" placeholder="الشروط" class="rounded-lg border border-slate-300 px-3 py-2">
-        <button class="bg-emerald-600 text-white rounded-lg px-4 py-2 font-bold">حفظ</button>
+        <input name="name" placeholder="الاسم" class="ds-input">
+        <input name="phone" placeholder="الموبايل" class="ds-input">
+        <input name="terms" placeholder="الشروط" class="ds-input">
+        <button class="ds-btn ds-btn-accent">حفظ</button>
     </form>
 
-    <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+    <div class="ds-card overflow-x-auto">
         <table class="w-full text-sm">
-            <thead class="bg-slate-50 text-slate-500">
+            <thead class="bg-slate-50/80 text-slate-500">
                 <tr>
                     <th class="text-right px-4 py-3">المورد</th>
                     <th class="text-right px-4 py-3">المشتريات</th>

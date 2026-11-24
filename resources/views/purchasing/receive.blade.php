@@ -5,7 +5,7 @@
 
 @section('content')
 <div class="space-y-4">
-    <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <div class="ds-card p-5">
         <div class="font-semibold">{{ $order->supplier?->name }}</div>
         <div class="text-sm text-slate-500">الحالة: {{ $order->status }}</div>
     </div>
@@ -24,8 +24,8 @@
                 @csrf
                 @foreach (session('override_violations', []) as $v)<input type="hidden" name="violations[]" value="{{ $v }}">@endforeach
                 <input type="hidden" name="value" value="{{ session('override_value', 0) }}">
-                <label class="block text-sm">سبب طلب التجاوز<input name="reason" required minlength="5" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></label>
-                <button class="bg-amber-600 text-white rounded-lg px-4 py-2 font-bold">اطلب تجاوز</button>
+                <label class="block text-sm">سبب طلب التجاوز<input name="reason" required minlength="5" class="mt-1 w-full ds-input"></label>
+                <button class="ds-btn bg-amber-600 text-white hover:bg-amber-700 rounded-lg px-4 py-2 font-bold">اطلب تجاوز</button>
             </form>
         </div>
     @endif
@@ -39,25 +39,25 @@
     @if (!in_array($order->status, ['open','partial']))
         <div class="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-4">أمر التوريد ده مش مفتوح</div>
     @else
-        <form method="POST" action="{{ route('purchasing.receive', $order) }}" class="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+        <form method="POST" action="{{ route('purchasing.receive', $order) }}" class="ds-card p-5 space-y-3">
             @csrf
             <div class="flex flex-wrap gap-3">
-                <input name="invoice_no" placeholder="رقم الفاتورة" class="rounded-lg border border-slate-300 px-3 py-2">
+                <input name="invoice_no" placeholder="رقم الفاتورة" class="ds-input">
                 @if ($approved->isNotEmpty())
                     <label class="text-sm">استخدم تجاوز
-                        <select name="override_id" class="rounded-lg border border-slate-300 px-3 py-2">
+                        <select name="override_id" class="ds-input">
                             <option value="">—</option>
                             @foreach ($approved as $ov)<option value="{{ $ov->id }}">#{{ $ov->id }} — {{ \Illuminate\Support\Str::limit($ov->reason, 40) }}</option>@endforeach
                         </select>
                     </label>
                 @endif
                 @can('override.recv')
-                    <label class="text-sm">سبب تجاوز مباشر<input name="reason" class="rounded-lg border border-slate-300 px-3 py-2" placeholder="لو هتتجاوز مباشرة"></label>
+                    <label class="text-sm">سبب تجاوز مباشر<input name="reason" class="ds-input" placeholder="لو هتتجاوز مباشرة"></label>
                 @endcan
             </div>
             <div class="overflow-x-auto">
             <table class="w-full text-sm">
-                <thead class="bg-slate-50 text-slate-500"><tr><th class="text-right px-2 py-2">الصنف</th><th class="text-right px-2 py-2">المطلوب</th><th class="text-right px-2 py-2">مستلم</th><th class="text-right px-2 py-2">موزون</th><th class="text-right px-2 py-2">مرفوض</th><th class="text-right px-2 py-2">السعر</th><th class="text-right px-2 py-2">حرارة</th><th class="text-right px-2 py-2">صلاحية</th></tr></thead>
+                <thead class="bg-slate-50/80 text-slate-500"><tr><th class="text-right px-2 py-2">الصنف</th><th class="text-right px-2 py-2">المطلوب</th><th class="text-right px-2 py-2">مستلم</th><th class="text-right px-2 py-2">موزون</th><th class="text-right px-2 py-2">مرفوض</th><th class="text-right px-2 py-2">السعر</th><th class="text-right px-2 py-2">حرارة</th><th class="text-right px-2 py-2">صلاحية</th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                     @foreach ($order->lines->where(fn($l)=>$l->received < $l->qty*0.99) as $line)
                         @php($spec = $specs[$line->item_id] ?? null)
@@ -75,7 +75,7 @@
                 </tbody>
             </table>
             </div>
-            <button class="bg-emerald-600 text-white rounded-lg px-5 py-2 font-bold">استلام</button>
+            <button class="ds-btn ds-btn-accent rounded-lg px-5 py-2 font-bold">استلام</button>
         </form>
     @endif
 </div>

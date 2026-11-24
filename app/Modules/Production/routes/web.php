@@ -13,6 +13,9 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::post('/production/items/{item}/route', [ProductionController::class, 'setRoute'])->name('production.setRoute');
     });
 
+    Route::get('/production/station', [ProductionController::class, 'station'])
+        ->middleware('perm:prod.orders')->name('production.station');
+
     Route::middleware('perm:prod.pack')->group(function () {
         Route::get('/pack', [ProductionController::class, 'packPage'])->name('pack.index');
         Route::post('/pack', [ProductionController::class, 'pack'])->name('pack.store');

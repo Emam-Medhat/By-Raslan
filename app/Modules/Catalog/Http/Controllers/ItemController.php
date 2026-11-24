@@ -15,12 +15,25 @@ class ItemController
     {
     }
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $items = Item::with(['family', 'barcodes'])->orderBy('name')->get();
-        $families = Family::orderBy('name')->get();
+        $q = trim((string) $request->query('q', ''));
 
-        return view('items.index', compact('items', 'families'));
+        $items = Item::query()
+            ->with(['family', 'barcodes'])
+            ->when($q !== '', function ($query) use ($q) {
+                $query->where(function ($inner) use ($q) {
+                    $inner->where('name', 'like', "%{$q}%")
+                        ->orWhere('scale_plu', 'like', "%{$q}%")
+                        ->orWhereHas('barcodes', fn ($b) => $b->where('code', 'like', "%{$q}%"));
+                });
+            })
+            ->orderBy('name')
+            ->get();
+
+        $families = Family::withCount('items')->orderBy('name')->get();
+
+        return view('items.index', compact('items', 'families', 'q'));
     }
 
     public function edit(Item $item): View
@@ -32,15 +45,7 @@ class ItemController
 
     public function store(Request $request): RedirectResponse
     {
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:150'],
-            'family_id' => ['nullable', 'exists:families,id'],
-            'kind' => ['required', 'string', 'in:'.implode(',', array_keys(Item::KINDS))],
-            'unit' => ['required', 'string', 'max:20'],
-            'scale_plu' => ['nullable', 'string', 'max:32'],
-            'barcodes' => ['nullable', 'string', 'max:1000'],
-            'active' => ['sometimes', 'boolean'],
-        ]);
+        $request->validate($this->rules(), $this->messages(), $this->attributes());
 
         $this->items->create($this->payload($request), $this->barcodes($request));
 
@@ -49,7 +54,17 @@ class ItemController
 
     public function update(Request $request, Item $item): RedirectResponse
     {
-        $data = $request->validate([
+        $request->validate($this->rules(), $this->messages(), $this->attributes());
+
+        $this->items->update($item, $this->payload($request), $this->barcodes($request));
+
+        return redirect()->route('items.index')->with('status', 'تم تحديث الصنف');
+    }
+
+    /** @return array<string, array<int, string>> */
+    private function rules(): array
+    {
+        return [
             'name' => ['required', 'string', 'max:150'],
             'family_id' => ['nullable', 'exists:families,id'],
             'kind' => ['required', 'string', 'in:'.implode(',', array_keys(Item::KINDS))],
@@ -57,11 +72,38 @@ class ItemController
             'scale_plu' => ['nullable', 'string', 'max:32'],
             'barcodes' => ['nullable', 'string', 'max:1000'],
             'active' => ['sometimes', 'boolean'],
-        ]);
+        ];
+    }
 
-        $this->items->update($item, $this->payload($request), $this->barcodes($request));
+    /** @return array<string, string> */
+    private function messages(): array
+    {
+        return [
+            'name.required' => 'اكتب اسم الصنف.',
+            'name.max' => 'اسم الصنف أطول من المسموح (150 حرف).',
+            'family_id.exists' => 'العائلة المختارة غير موجودة.',
+            'kind.required' => 'اختر نوع الصنف.',
+            'kind.in' => 'نوع الصنف غير صحيح.',
+            'unit.required' => 'اكتب وحدة البيع (مثال: كرتونة).',
+            'unit.max' => 'الوحدة أطول من المسموح (20 حرف).',
+            'scale_plu.max' => 'رقم PLU الميزان أطول من المسموح (32 حرف).',
+            'barcodes.max' => 'الباركود طويل جداً (الحد 1000 حرف).',
+            'active.boolean' => 'قيمة «مفعّل» غير صحيحة.',
+        ];
+    }
 
-        return redirect()->route('items.index')->with('status', 'تم تحديث الصنف');
+    /** @return array<string, string> */
+    private function attributes(): array
+    {
+        return [
+            'name' => 'اسم الصنف',
+            'family_id' => 'العائلة',
+            'kind' => 'النوع',
+            'unit' => 'الوحدة',
+            'scale_plu' => 'PLU الميزان',
+            'barcodes' => 'الباركود',
+            'active' => 'مفعّل',
+        ];
     }
 
     public function storeFamily(Request $request): RedirectResponse

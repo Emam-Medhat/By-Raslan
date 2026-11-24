@@ -5,7 +5,7 @@
 
 @section('content')
 <div class="space-y-4">
-    <div class="bg-white rounded-xl border border-slate-200 p-5 grid gap-2 sm:grid-cols-4">
+    <div class="ds-card p-5 grid gap-2 sm:grid-cols-4">
         <div><div class="text-xs text-slate-500">من</div><div class="font-semibold">{{ $transfer->from_loc }}</div></div>
         <div><div class="text-xs text-slate-500">إلى</div><div class="font-semibold">{{ $transfer->to_loc }}</div></div>
         <div><div class="text-xs text-slate-500">الحالة</div><div class="font-semibold">{{ $transfer->status === 'received' ? 'مستلم' : 'في الطريق' }}</div></div>
@@ -14,18 +14,18 @@
 
     @if ($transfer->status === 'transit')
         @can('stock.edit')
-            <form method="POST" action="{{ route('transfers.receive', $transfer) }}" class="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+            <form method="POST" action="{{ route('transfers.receive', $transfer) }}" class="ds-card p-5 space-y-3">
                 @csrf
                 <label class="block text-sm font-semibold">امسح العلب المستلمة (اترك الباقي لتسجيله ناقص)</label>
-                <textarea name="boxes" rows="3" class="w-full rounded-lg border border-slate-300 px-3 py-2" dir="ltr"></textarea>
+                <textarea name="boxes" rows="3" class="w-full ds-input" dir="ltr"></textarea>
                 <button class="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-5 py-2 font-bold">استلام</button>
             </form>
         @endcan
     @endif
 
-    <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+    <div class="ds-card overflow-x-auto">
         <table class="w-full text-sm">
-            <thead class="bg-slate-50 text-slate-500">
+            <thead class="bg-slate-50/80 text-slate-500">
                 <tr>
                     <th class="text-right px-4 py-3">العلبة</th>
                     <th class="text-right px-4 py-3">الحالة</th>

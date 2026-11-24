@@ -17,7 +17,7 @@ class BoxController
     public function index(): View
     {
         $sn = filter_var(request('sn'), FILTER_VALIDATE_INT) ?: null;
-        $box = $sn ? Box::with('item')->find($sn) : null;
+        $box = $sn ? Box::with(['item', 'location'])->find($sn) : null;
         $history = $box ? $this->stock->boxHistory($box->sn) : collect();
 
         return view('boxes.index', compact('box', 'history', 'sn'));

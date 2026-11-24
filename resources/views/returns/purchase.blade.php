@@ -7,13 +7,13 @@
 <div class="flex items-center justify-between mb-4">
     <h1 class="text-xl font-bold">مرتجعات الموردين</h1>
     @can('purchase.edit')
-        <a href="{{ route('purchase-returns.create') }}" class="bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-4 py-2 text-sm font-bold">مرتجع مورد</a>
+        <a href="{{ route('purchase-returns.create') }}" class="ds-btn ds-btn-primary rounded-lg px-4 py-2 text-sm font-bold">مرتجع مورد</a>
     @endcan
 </div>
 
-<div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+<div class="ds-card overflow-x-auto">
     <table class="w-full text-sm">
-        <thead class="bg-slate-50 text-slate-500">
+        <thead class="bg-slate-50/80 text-slate-500">
             <tr>
                 <th class="text-right px-4 py-3">رقم</th>
                 <th class="text-right px-4 py-3">المورد</th>

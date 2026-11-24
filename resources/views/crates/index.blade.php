@@ -1,42 +1,42 @@
 @extends('layouts.app')
 
 @section('title', 'الصناديق')
-@section('page-title', 'إدارة الصناديق (الك runAfter)')
+@section('page-title', 'إدارة الصناديق')
 
 @section('content')
 <div class="space-y-4">
     @can('settings.edit')
         <form method="POST" action="{{ route('crates.store') }}" class="flex gap-2 max-w-md">
             @csrf
-            <input name="id" placeholder="معرّف الصندوق (مثل CR-041)" class="flex-1 rounded-lg border border-slate-300 px-3 py-2">
-            <button class="bg-brand-600 text-white rounded-lg px-4 py-2 font-bold">إضافة</button>
+            <input name="id" placeholder="معرّف الصندوق (مثل CR-041)" class="flex-1 ds-input">
+            <button class="ds-btn ds-btn-primary">إضافة</button>
         </form>
     @endcan
 
-    <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead class="bg-slate-50 text-slate-500">
+    <div class="ds-table-wrap">
+        <table class="ds-table">
+            <thead>
                 <tr>
-                    <th class="text-right px-4 py-3">الصندوق</th>
-                    <th class="text-right px-4 py-3">الحالة</th>
-                    <th class="text-right px-4 py-3">إجراء</th>
+                    <th>الصندوق</th>
+                    <th>الحالة</th>
+                    <th>إجراء</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
+            <tbody>
                 @forelse ($crates as $crate)
                     <tr>
-                        <td class="px-4 py-3 font-semibold">{{ $crate->id }}</td>
-                        <td class="px-4 py-3">{{ $crate->active ? 'متاح' : 'معطّل' }}</td>
-                        <td class="px-4 py-3">
+                        <td class="font-semibold">{{ $crate->id }}</td>
+                        <td><span class="ds-badge {{ $crate->active ? 'ds-badge-success' : 'ds-badge-neutral' }}">{{ $crate->active ? 'متاح' : 'معطّل' }}</span></td>
+                        <td>
                             @can('settings.edit')
                                 <form method="POST" action="{{ route('crates.toggle', $crate) }}" class="inline">
-                                    @csrf <button class="text-xs underline text-slate-600">{{ $crate->active ? 'تعطيل' : 'تفعيل' }}</button>
+                                    @csrf <button class="ds-btn ds-btn-sm ds-btn-secondary">{{ $crate->active ? 'تعطيل' : 'تفعيل' }}</button>
                                 </form>
                             @endcan
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="3" class="px-4 py-6 text-center text-slate-400">لا توجد صناديق</td></tr>
+                    <tr><td colspan="3" class="ds-empty">لا توجد صناديق</td></tr>
                 @endforelse
             </tbody>
         </table>

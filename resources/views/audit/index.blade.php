@@ -4,9 +4,9 @@
 @section('page-title', 'سجل التعديلات')
 
 @section('content')
-<div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+<div class="ds-card overflow-x-auto">
     <table class="w-full text-sm">
-        <thead class="bg-slate-50 text-slate-500">
+        <thead class="bg-slate-50/80 text-slate-500">
             <tr>
                 <th class="text-right px-4 py-3">التاريخ</th>
                 <th class="text-right px-4 py-3">المستخدم</th>

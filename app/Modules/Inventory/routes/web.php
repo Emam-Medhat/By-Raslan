@@ -2,6 +2,7 @@
 
 use App\Modules\Inventory\Http\Controllers\BoxController;
 use App\Modules\Inventory\Http\Controllers\StockController;
+use App\Modules\Inventory\Http\Controllers\StockCountController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'active'])->group(function () {
@@ -31,4 +32,33 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/boxes', [BoxController::class, 'index'])
         ->middleware('perm:stock.view')
         ->name('boxes.index');
+
+    // Stock Counts (Stocktaking)
+    Route::get('/stock-counts', [StockCountController::class, 'index'])
+        ->middleware('perm:stock.view')
+        ->name('stock-counts.index');
+
+    Route::get('/stock-counts/create', [StockCountController::class, 'create'])
+        ->middleware('perm:stock.adjust')
+        ->name('stock-counts.create');
+
+    Route::post('/stock-counts', [StockCountController::class, 'store'])
+        ->middleware('perm:stock.adjust')
+        ->name('stock-counts.store');
+
+    Route::get('/stock-counts/{stockCount}', [StockCountController::class, 'show'])
+        ->middleware('perm:stock.view')
+        ->name('stock-counts.show');
+
+    Route::post('/stock-counts/{stockCount}/items', [StockCountController::class, 'addItem'])
+        ->middleware('perm:stock.adjust')
+        ->name('stock-counts.add-item');
+
+    Route::put('/stock-count-items/{item}', [StockCountController::class, 'updateItem'])
+        ->middleware('perm:stock.adjust')
+        ->name('stock-count-items.update');
+
+    Route::post('/stock-counts/{stockCount}/approve', [StockCountController::class, 'approve'])
+        ->middleware('perm:stock.adjust')
+        ->name('stock-counts.approve');
 });

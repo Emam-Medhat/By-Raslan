@@ -37,6 +37,11 @@ class Item extends Model
         return $this->belongsTo(Family::class);
     }
 
+    public function routes()
+    {
+        return $this->hasMany(\App\Modules\Production\Models\ItemRoute::class);
+    }
+
     public function barcodes(): HasMany
     {
         return $this->hasMany(ItemBarcode::class);

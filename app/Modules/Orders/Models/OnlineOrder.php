@@ -5,6 +5,7 @@ namespace App\Modules\Orders\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Modules\Organization\Models\Location;
 
 class OnlineOrder extends Model
 {
@@ -45,5 +46,10 @@ class OnlineOrder extends Model
     public function boxes(): HasMany
     {
         return $this->hasMany(OnlineOrderBox::class, 'order_id');
+    }
+
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class, 'location_id');
     }
 }

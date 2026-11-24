@@ -20,8 +20,9 @@ class TransferController
     public function index(): View
     {
         $transfers = Transfer::withCount('boxes')->orderByDesc('id')->get();
+        $locations = Location::orderBy('name')->get();
 
-        return view('transfers.index', compact('transfers'));
+        return view('transfers.index', compact('transfers', 'locations'));
     }
 
     public function create(): View
