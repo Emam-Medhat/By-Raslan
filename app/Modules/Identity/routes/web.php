@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Identity\Http\Controllers\Auth\LoginController;
+use App\Modules\Identity\Http\Controllers\RoleController;
 use App\Modules\Identity\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -17,7 +18,7 @@ Route::middleware('guest')->group(function () {
         ->middleware('throttle:10,1');
 });
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'nav.access'])->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
     Route::middleware('perm:users.manage')->group(function () {
@@ -29,5 +30,11 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::post('/users/{user}/toggle', [UserController::class, 'toggle'])->name('users.toggle');
         Route::post('/users/{user}/grant', [UserController::class, 'grant'])->name('users.grant');
         Route::post('/users/{user}/revoke', [UserController::class, 'revoke'])->name('users.revoke');
+
+        Route::get('/roles', [RoleController::class, 'index'])->name('roles.index');
+        Route::post('/roles', [RoleController::class, 'store'])->name('roles.store');
+        Route::get('/roles/{role}/edit', [RoleController::class, 'edit'])->name('roles.edit');
+        Route::put('/roles/{role}', [RoleController::class, 'update'])->name('roles.update');
+        Route::delete('/roles/{role}', [RoleController::class, 'destroy'])->name('roles.destroy');
     });
 });

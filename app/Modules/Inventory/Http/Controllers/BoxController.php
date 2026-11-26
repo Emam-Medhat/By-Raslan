@@ -16,10 +16,20 @@ class BoxController
 
     public function index(): View
     {
-        $sn = filter_var(request('sn'), FILTER_VALIDATE_INT) ?: null;
-        $box = $sn ? Box::with(['item', 'location'])->find($sn) : null;
+        $q = trim((string) request('sn', ''));
+        $box = null;
+        if ($q !== '') {
+            $query = Box::with(['item', 'location', 'sale']);
+            $user = request()->user();
+            if ($user && !$user->isOwner()) {
+                $ids = $user->accessibleLocationIds();
+                if (!empty($ids)) $query->whereIn('location_id', $ids);
+            }
+            $box = (clone $query)->where('uid', $q)->first();
+            if (! $box && ctype_digit($q)) $box = (clone $query)->find((int)$q);
+        }
         $history = $box ? $this->stock->boxHistory($box->sn) : collect();
-
+        $sn = $q;
         return view('boxes.index', compact('box', 'history', 'sn'));
     }
 

@@ -484,7 +484,7 @@ class OrderService
                     throw new \RuntimeException('علبة مش متاحة في التسليم');
                 }
 
-                $box->update(['status' => 'sold']);
+                $box->update(['status' => 'sold', 'sold_at' => now()]);
 
                 StockMove::create([
                     'item_id' => $box->item_id,
@@ -516,19 +516,7 @@ class OrderService
                 'delivered_at' => now(),
                 'subtotal' => round($sub, 2),
                 'total' => $total,
-                'paid' => true,
-                'collection_method' => $method,
-                'collected_at' => now(),
-                'shift_id' => $shift->id,
-            ]);
-
-            ShiftCollection::create([
-                'shift_id' => $shift->id,
-                'user_id' => $userId,
-                'location_id' => $order->location_id,
-                'order_id' => $order->id,
-                'method' => $method,
-                'amount' => $total,
+                'paid' => false,
             ]);
 
             return $total;

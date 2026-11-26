@@ -69,7 +69,7 @@ class ItemController
             'family_id' => ['nullable', 'exists:families,id'],
             'kind' => ['required', 'string', 'in:'.implode(',', array_keys(Item::KINDS))],
             'unit' => ['required', 'string', 'max:20'],
-            'scale_plu' => ['nullable', 'string', 'max:32'],
+            'scale_plu' => ['nullable', 'string', 'regex:/^\d{1,6}$/'],
             'barcodes' => ['nullable', 'string', 'max:1000'],
             'active' => ['sometimes', 'boolean'],
         ];
@@ -86,7 +86,7 @@ class ItemController
             'kind.in' => 'نوع الصنف غير صحيح.',
             'unit.required' => 'اكتب وحدة البيع (مثال: كرتونة).',
             'unit.max' => 'الوحدة أطول من المسموح (20 حرف).',
-            'scale_plu.max' => 'رقم PLU الميزان أطول من المسموح (32 حرف).',
+            'scale_plu.regex' => 'كود الميزان لازم يكون من رقم إلى 6 أرقام، من غير حروف أو رموز.',
             'barcodes.max' => 'الباركود طويل جداً (الحد 1000 حرف).',
             'active.boolean' => 'قيمة «مفعّل» غير صحيحة.',
         ];

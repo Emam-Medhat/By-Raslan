@@ -12,130 +12,82 @@ use Illuminate\View\View;
 
 class ReservationController
 {
-    public function __construct(private readonly ReservationService $reservations)
-    {
-    }
+    public function __construct(private readonly ReservationService $service) {}
 
     public function index(Request $request): View
     {
-        $data = $request->validate([
-            'date' => ['nullable', 'date'],
-            'status' => ['nullable', 'in:pending,converted,cancelled'],
-            'location_id' => ['nullable', 'exists:locations,id'],
-        ]);
-
-        $reservations = Reservation::with(['customer', 'location', 'convertedOrder'])
-            ->when($data['date'] ?? null, fn ($q, $d) => $q->whereDate('reservation_date', $d))
-            ->when($data['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
-            ->when($data['location_id'] ?? null, fn ($q, $l) => $q->where('location_id', $l))
-            ->orderBy('reservation_date')->orderBy('id')
-            ->paginate(20);
-
-        $branches = Location::whereIn('type', ['dark', 'shop'])->where('active', true)->orderBy('sort')->get();
-
-        return view('reservations.index', compact('reservations', 'branches'));
-    }
-
-    public function create(): View
-    {
-        $branches = Location::whereIn('type', ['dark', 'shop'])->where('active', true)->orderBy('sort')->get();
-        $items = Item::where('active', true)->orderBy('name')->get(['id', 'name', 'unit']);
-
-        return view('reservations.create', compact('branches', 'items'));
+        $date = $request->string('date')->toString() ?: now()->toDateString();
+        $reservations = Reservation::with(['location','lines.item','customer'])->whereDate('scheduled_for', $date)->orderByDesc('id')->get();
+        $locations = Location::whereIn('type',['dark','shop'])->where('active',true)->orderBy('name')->get();
+        $items = Item::where('active',true)->orderBy('name')->get(['id','name','unit']);
+        $report = Reservation::with('lines.item')
+            ->whereDate('scheduled_for', $request->string('report_date')->toString() ?: now()->addDay()->toDateString())
+            ->whereIn('status', ['pending','confirmed','converted'])
+            ->get();
+        $reportRows = [];
+        foreach ($report as $r) {
+            foreach ($r->lines as $l) {
+                $k = $l->item_id;
+                if (!isset($reportRows[$k])) $reportRows[$k] = ['item' => $l->item?->name, 'qty' => 0, 'unit' => $l->item?->unit];
+                $reportRows[$k]['qty'] += (float)$l->qty;
+            }
+        }
+        $reportNotes = $report
+            ->filter(fn ($reservation) => filled($reservation->notes))
+            ->map(fn ($reservation) => [
+                'no' => $reservation->no,
+                'customer' => $reservation->customer_name,
+                'note' => $reservation->notes,
+            ])
+            ->values();
+        usort($reportRows, fn($a,$b)=>strcmp($a['item'] ?? '', $b['item'] ?? ''));
+        $reportDate = $request->string('report_date')->toString() ?: now()->addDay()->toDateString();
+        return view('reservations.index', compact('reservations','locations','items','date','reportRows','reportDate','reportNotes'));
     }
 
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'phone' => ['required', 'string', 'max:20'],
-            'name' => ['required', 'string', 'max:120'],
-            'address' => ['required', 'string', 'max:255'],
-            'area' => ['nullable', 'string', 'max:120'],
-            'location_id' => ['nullable', 'exists:locations,id'],
-            'reservation_date' => ['required', 'date', 'after_or_equal:today'],
-            'delivery_fee' => ['nullable', 'numeric', 'min:0'],
-            'pay_method' => ['nullable', 'in:cash,card,instapay'],
-            'note' => ['nullable', 'string', 'max:500'],
-            'lines' => ['required', 'array', 'min:1', 'max:40'],
-            'lines.*.item_id' => ['required', 'exists:items,id'],
-            'lines.*.qty' => ['required', 'numeric', 'min:0', 'max:50'],
+            'location_id' => ['required','exists:locations,id'],
+            'customer_name' => ['nullable','string','max:120'],
+            'customer_phone' => ['nullable','string','max:32'],
+            'customer_address' => ['nullable','string','max:255'],
+            'scheduled_for' => ['required','date'],
+            'notes' => ['nullable','string','max:1000'],
+            'lines' => ['required','array','min:1'],
+            'lines.*.item_id' => ['required','exists:items,id'],
+            'lines.*.qty' => ['required','numeric','min:0.001'],
+            'lines.*.note' => ['nullable','string','max:255'],
         ]);
-
-        $lines = collect($data['lines'])
-            ->filter(fn ($l) => (float) $l['qty'] > 0)
-            ->map(fn ($l) => ['item_id' => (int) $l['item_id'], 'qty' => (float) $l['qty']])
-            ->values()->all();
-
-        if ($lines === []) {
-            return back()->withErrors(['lines' => 'السلة فاضية'])->withInput();
-        }
-
         try {
-            $reservation = $this->reservations->create([
-                'phone' => $data['phone'],
-                'name' => $data['name'],
-                'address' => $data['address'],
-                'area' => $data['area'] ?? null,
-                'location_id' => $data['location_id'] ?? null,
-                'reservation_date' => $data['reservation_date'],
-                'delivery_fee' => $data['delivery_fee'] ?? null,
-                'pay_method' => $data['pay_method'] ?? 'cash',
-                'note' => $data['note'] ?? null,
-                'lines' => $lines,
-            ], $request->user()->id);
+            $this->service->create($data, auth()->id());
         } catch (\RuntimeException $e) {
-            return back()->withErrors(['order' => $e->getMessage()])->withInput();
+            return back()->withErrors(['reservation' => $e->getMessage()])->withInput();
         }
-
-        return redirect()->route('reservations.show', $reservation)->with('status', 'تم إنشاء الحجز ليوم '.$reservation->reservation_date->toDateString());
+        return back()->with('status', 'تم تسجيل الحجز.');
     }
 
-    public function show(Reservation $reservation): View
+    public function confirm(Reservation $reservation): RedirectResponse
     {
-        $reservation->load(['customer', 'lines.item', 'location', 'convertedOrder']);
-
-        return view('reservations.show', compact('reservation'));
+        if ($reservation->status !== 'pending') return back()->withErrors(['reservation' => 'لا يمكن تأكيد هذا الحجز.']);
+        $reservation->update(['status' => 'confirmed', 'confirmed_by' => auth()->id(), 'confirmed_at' => now()]);
+        return back()->with('status', 'تم تأكيد الحجز.');
     }
 
-    /** Manual "حوّل اوردر" — after confirming with the customer. */
-    public function convert(Request $request, Reservation $reservation): RedirectResponse
+    public function convert(Reservation $reservation): RedirectResponse
     {
         try {
-            $order = $this->reservations->convert($reservation, $request->user()->id);
+            $order = $this->service->convertToOrder($reservation, auth()->id());
         } catch (\RuntimeException $e) {
-            return back()->withErrors(['order' => $e->getMessage()]);
+            return back()->withErrors(['reservation' => $e->getMessage()]);
         }
-
-        return redirect()->route('orders.show', $order)->with('status', 'تم تحويل الحجز لأوردر #'.$order->no);
+        return redirect()->route('orders.show', $order)->with('status', 'تم تحويل الحجز إلى أوردر #' . $order->no);
     }
 
     public function cancel(Reservation $reservation): RedirectResponse
     {
-        try {
-            $this->reservations->cancel($reservation);
-        } catch (\RuntimeException $e) {
-            return back()->withErrors(['order' => $e->getMessage()]);
-        }
-
-        return back()->with('status', 'تم إلغاء الحجز');
-    }
-
-    /**
-     * Factory report (تقرير المصنع): per-item aggregated quantities for
-     * the chosen date (default tomorrow) + the reservations' notes.
-     * The nightly scheduled job stores this for tomorrow at 00:00; the
-     * page always shows the live aggregate for the chosen date.
-     */
-    public function factoryReport(Request $request): View
-    {
-        $data = $request->validate([
-            'date' => ['nullable', 'date'],
-        ]);
-
-        $date = $data['date'] ?? today()->addDay()->toDateString();
-        $report = $this->reservations->factoryReport($date);
-        $generated = $this->reservations->lastGeneratedFactoryReport($date);
-
-        return view('reports.factory-reservations', compact('report', 'generated'));
+        if ($reservation->status === 'converted') return back()->withErrors(['reservation' => 'الحجز تم تحويله بالفعل.']);
+        $reservation->update(['status' => 'cancelled']);
+        return back()->with('status', 'تم إلغاء الحجز.');
     }
 }

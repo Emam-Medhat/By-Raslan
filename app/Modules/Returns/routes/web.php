@@ -4,7 +4,7 @@ use App\Modules\Returns\Http\Controllers\PurchaseReturnController;
 use App\Modules\Returns\Http\Controllers\ReturnController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'nav.access'])->group(function () {
     Route::get('/returns', [ReturnController::class, 'index'])
         ->middleware('perm:acc.view')->name('returns.index');
 

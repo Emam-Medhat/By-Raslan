@@ -94,8 +94,8 @@
             <div class="ds-kpi-value" style="color: var(--bad);">{{ number_format($stats['total_expenses'] ?? 0, 2) }} ج</div>
         </article>
         <article class="ds-kpi">
-            <div class="ds-kpi-label">إجمالي الفرق</div>
-            <div class="ds-kpi-value" style="color: {{ ($stats['total_variance'] ?? 0) < 0 ? 'var(--bad)' : 'var(--good)' }};">{{ number_format($stats['total_variance'] ?? 0, 2) }} ج</div>
+            <div class="ds-kpi-label">إجمالي المبيعات</div>
+            <div class="ds-kpi-value">{{ number_format($stats['total_sales'] ?? 0, 2) }} ج</div>
         </article>
     </div>
 
@@ -168,10 +168,8 @@
                     <th>بداية الشيفت</th>
                     <th>نهاية الشيفت</th>
                     <th>عدد الساعات</th>
-                    <th>رصيد بداية الدرج</th>
-                    <th>الرصيد المتوقع</th>
-                    <th>الرصيد الحقيقي</th>
-                    <th>الفرق</th>
+                    <th>رصيد بداية العهدة</th>
+                    <th>العهدة المتوقعة / المرحّلة</th>
                     <th>التاريخ</th>
                     <th>الحالة</th>
                     <th>إجراءات</th>
@@ -184,30 +182,6 @@
                         if ($shift->opened_at && $shift->closed_at) {
                             $diff = $shift->opened_at->diff($shift->closed_at);
                             $hours = $diff->h + ($diff->days * 24) . ' س ' . $diff->i . ' د';
-                        }
-                        
-                        $realBalance = 0;
-                        if ($shift->closed_at && isset($shift->sales_total)) {
-                            $realBalance = $shift->opening_cash + $shift->sales_total;
-                        } elseif ($shift->closed_at && $shift->expected_cash !== null) {
-                            $realBalance = $shift->expected_cash;
-                        }
-                        
-                        $variance = null;
-                        $varianceLabel = '—';
-                        $varianceClass = 'muted';
-                        if ($shift->status === 'closed' && $shift->counted_cash !== null && $realBalance !== null) {
-                            $variance = round((float) $shift->counted_cash - (float) $realBalance, 2);
-                            if ($variance < 0) {
-                                $varianceLabel = 'عجز ' . number_format(abs($variance), 2);
-                                $varianceClass = 'text-rose-600 font-semibold';
-                            } elseif ($variance > 0) {
-                                $varianceLabel = 'زيادة ' . number_format($variance, 2);
-                                $varianceClass = 'text-amber-600 font-semibold';
-                            } else {
-                                $varianceLabel = 'مطابق';
-                                $varianceClass = 'text-emerald-600 font-semibold';
-                            }
                         }
                         
                         $statusLabels = [
@@ -226,20 +200,15 @@
                         <td class="num" style="font-size: 12px;">{{ $hours }}</td>
                         <td class="num">{{ number_format((float) $shift->opening_cash, 2) }}</td>
                         <td class="num">{{ $shift->expected_cash !== null ? number_format((float) $shift->expected_cash, 2) : '—' }}</td>
-                        <td class="num">
-                            @if($shift->status === 'closed')
-                                <span class="font-bold text-primary-800">{{ number_format($realBalance, 2) }}</span>
-                            @else
-                                <span class="muted">—</span>
-                            @endif
-                        </td>
-                        <td class="{{ $varianceClass }}">{{ $varianceLabel }}</td>
                         <td class="num" style="font-size: 12px;">{{ $shift->created_at?->format('Y-m-d') ?? '—' }}</td>
                         <td><span class="ds-badge {{ $statusClass }}">{{ $statusLabel }}</span></td>
                         <td>
                             <div class="flex gap-1 items-center justify-end">
                                 <a href="{{ route('shifts.show', $shift) }}" class="ds-btn ds-btn-sm ds-btn-secondary px-2 py-1" title="عرض التفاصيل">
                                     <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                </a>
+                                <a href="{{ route('shifts.report', $shift) }}" class="ds-btn ds-btn-sm ds-btn-secondary px-2 py-1" title="تقرير اليومية">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                                 </a>
                                 <a href="{{ route('shifts.movements', $shift) }}" class="ds-btn ds-btn-sm ds-btn-secondary px-2 py-1" title="حركة الشيفت">
                                     <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
@@ -272,7 +241,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="13" class="ds-empty">لا توجد شيفتات</td></tr>
+                    <tr><td colspan="10" class="ds-empty">لا توجد شيفتات</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -292,11 +261,7 @@
             <div class="bg-slate-50 rounded-lg p-3 text-sm">
                 <div class="flex justify-between"><span class="muted">الشيفت</span><span class="font-bold" id="closeShiftName"></span></div>
             </div>
-            <p class="text-sm muted">أدخل النقد المعدود الفعلي في نهاية الشيفت.</p>
-            <div>
-                <label class="ds-label">الرصيد المعدود <span class="text-red-500">*</span></label>
-                <input name="counted_cash" type="number" step="0.01" min="0" required class="ds-input" placeholder="0.00">
-            </div>
+            <p class="text-sm muted">سيتم إغلاق الوردية وترحيل العهدة المتوقعة تلقائياً.</p>
             <div>
                 <label class="ds-label">ملاحظات (اختياري)</label>
                 <textarea name="notes" rows="2" class="ds-input" placeholder="أي ملاحظات..."></textarea>
@@ -394,7 +359,6 @@ function closeModal(id) {
 function openCloseModal(shiftId, shiftName, closeUrl) {
     document.getElementById('closeShiftForm').action = closeUrl;
     document.getElementById('closeShiftName').textContent = shiftName;
-    document.getElementById('closeShiftForm').querySelector('input[name="counted_cash"]').value = '';
     document.getElementById('closeShiftForm').querySelector('textarea[name="notes"]').value = '';
     openModal('closeShiftModal');
 }

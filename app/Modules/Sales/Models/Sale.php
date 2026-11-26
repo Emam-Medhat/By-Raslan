@@ -17,9 +17,10 @@ class Sale extends Model
     public const CREATED_AT = 'at';
 
     protected $fillable = [
-        'no', 'location_id', 'shift_id', 'cashier', 'at', 'subtotal', 'discount', 'delivery_fee', 'total',
-        'paid_cash', 'paid_card', 'change', 'idempotency_key', 'request_payload', 'discount_by',
-        'customer_id', 'driver_id',
+        'no', 'location_id', 'shift_id', 'cashier', 'customer_name', 'customer_phone', 'at', 'subtotal', 'discount', 'delivery_fee', 'total',
+        'paid_cash', 'paid_card', 'change', 'pay_method', 'payment_status', 'collected_at', 'collected_by',
+        'delivery_status', 'driver_id', 'delivered_at', 'order_source', 'online_order_id', 'reservation_id',
+        'idempotency_key', 'request_payload', 'discount_by',
     ];
 
     protected function casts(): array
@@ -32,6 +33,8 @@ class Sale extends Model
             'paid_cash' => 'decimal:2',
             'paid_card' => 'decimal:2',
             'change' => 'decimal:2',
+            'collected_at' => 'datetime',
+            'delivered_at' => 'datetime',
             'request_payload' => 'array',
         ];
     }

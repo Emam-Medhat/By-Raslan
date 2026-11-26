@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Rejects the request when the account is disabled.
+ * Rejects disabled accounts. Cashiers open a shift after choosing their branch.
  */
 class EnsureActive
 {

@@ -101,7 +101,7 @@ class PosTest extends TestCase
         $this->assertSame(1, Sale::count());
     }
 
-    public function test_close_shift_reports_difference(): void
+    public function test_close_shift_reports_expected_cash_without_a_drawer_count(): void
     {
         $item = Item::create(['name' => 'صنف قفل', 'kind' => 'product', 'unit' => 'كرتونة', 'active' => true]);
         Price::create(['item_id' => $item->id, 'location_id' => 'roushdy', 'channel' => 'direct', 'price' => 10]);
@@ -118,11 +118,13 @@ class PosTest extends TestCase
         ])->assertOk();
 
         // expected = 100 opening + (50 cash - 30 change) = 120
-        $this->actingAs($owner)->post('/pos/close', ['shift_id' => $shift->id, 'counted' => 125])
-            ->assertSessionHasNoErrors();
+        $this->actingAs($owner)->post('/pos/close', ['shift_id' => $shift->id])
+            ->assertOk()
+            ->assertSee('تقرير إغلاق اليومية');
 
         $shift->refresh();
         $this->assertSame('closed', $shift->status);
-        $this->assertEqualsWithDelta(5.0, (float) $shift->counted_cash - (float) $shift->expected_cash, 0.001);
+        $this->assertNull($shift->counted_cash);
+        $this->assertEquals(120, (float) $shift->expected_cash);
     }
 }

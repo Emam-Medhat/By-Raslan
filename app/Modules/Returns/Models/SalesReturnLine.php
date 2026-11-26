@@ -9,7 +9,10 @@ class SalesReturnLine extends Model
 {
     public $timestamps = false;
 
-    protected $fillable = ['return_id', 'sale_line_id', 'item_id', 'box_sn', 'qty', 'unit_price', 'total'];
+    protected $fillable = [
+        'return_id', 'sale_line_id', 'item_id', 'box_sn', 'qty', 'unit_price', 'total',
+        'destination', 'destination_location_id',
+    ];
 
     protected function casts(): array
     {

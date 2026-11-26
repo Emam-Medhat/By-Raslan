@@ -1,99 +1,53 @@
 @php
     $user = auth()->user();
-    $can = fn(string $perm) => $user && ($user->isOwner() || $user->hasPermission($perm));
+    $accessGroups = \App\Modules\Identity\Support\AccessRegistry::groups();
+    $hasNavPerms = $user && ! $user->isOwner() && (
+        $user->permissions()->where('permission_id', 'like', 'nav.%')->exists()
+        || $user->roles()->whereHas('permissions', fn($q) => $q->where('permissions.id', 'like', 'nav.%'))->exists()
+    );
+    $canNav = function (string $perm) use ($user, $hasNavPerms) {
+        if (! $user) return false;
+        if ($user->isOwner()) return true;
+        if ($hasNavPerms) return $user->hasPermission($perm);
+        return true; // legacy users without nav perms keep previous behavior via nav.access middleware compat
+    };
 
-    $sidebarModules = [
-        [
-            'key' => 'home',
-            'label' => 'الرئيسية',
-            'items' => [
-                ['label' => 'لوحة التحكم', 'route' => 'dashboard', 'icon' => 'layout-dashboard', 'match' => 'dashboard*', 'show' => true],
-                ['label' => 'الإحصائيات', 'route' => 'statistics.index', 'icon' => 'chart-no-axes-combined', 'match' => 'statistics*', 'show' => $can('acc.view')],
-            ],
-        ],
-        [
-            'key' => 'sales',
-            'label' => 'المبيعات',
-            'items' => [
-                ['label' => 'الكاشير', 'route' => 'pos.index', 'icon' => 'monitor', 'match' => 'pos*', 'show' => $can('pos.sell')],
-                ['label' => 'المبيعات', 'route' => 'sales.index', 'icon' => 'receipt-text', 'match' => 'sales*', 'show' => $can('acc.view')],
-                ['label' => 'المرتجعات', 'route' => 'returns.index', 'icon' => 'undo-2', 'match' => 'returns*', 'show' => $can('acc.view')],
-                ['label' => 'طلبات الأونلاين', 'route' => 'orders.index', 'icon' => 'shopping-cart', 'match' => 'orders*', 'show' => $can('orders.handle')],
-                ['label' => 'إنشاء طلب (خدمة عملاء)', 'route' => 'orders.create', 'icon' => 'phone-call', 'match' => 'orders/create', 'show' => $can('orders.handle')],
-                ['label' => 'الحجوزات', 'route' => 'reservations.index', 'icon' => 'calendar-clock', 'match' => 'reservations*', 'show' => $can('orders.handle')],
-                ['label' => 'الطيارين', 'route' => 'drivers.index', 'icon' => 'bike', 'match' => 'drivers*', 'show' => $can('orders.handle')],
-                ['label' => 'الأسعار', 'route' => 'prices.index', 'icon' => 'badge-dollar-sign', 'match' => 'prices*', 'show' => $can('prices.edit')],
-            ],
-        ],
-        [
-            'key' => 'inventory',
-            'label' => 'المخزون',
-            'items' => [
-                ['label' => 'الأصناف', 'route' => 'items.index', 'icon' => 'package-search', 'match' => 'items*', 'show' => $can('stock.view')],
-                ['label' => 'المخزون والحركات', 'route' => 'stock.index', 'icon' => 'boxes', 'match' => 'stock/adjust*', 'show' => $can('stock.adjust') || $can('stock.view')],
-                ['label' => 'التحويلات', 'route' => 'transfers.index', 'icon' => 'arrow-left-right', 'match' => 'transfers*', 'show' => $can('stock.view')],
-                ['label' => 'الجرد', 'route' => 'stock-counts.index', 'icon' => 'clipboard-check', 'match' => 'stock-counts*', 'show' => $can('stock.view')],
-                ['label' => 'تتبّع العلبة', 'route' => 'boxes.index', 'icon' => 'qr-code', 'match' => 'boxes*', 'show' => $can('stock.view')],
-                ['label' => 'هالك وتلف', 'route' => 'stock.dispose', 'icon' => 'trash-2', 'match' => 'stock/dispose*', 'show' => $can('stock.adjust')],
-            ],
-        ],
-        [
-            'key' => 'purchasing',
-            'label' => 'المشتريات',
-            'items' => [
-                ['label' => 'أوامر التوريد', 'route' => 'purchasing.index', 'icon' => 'shopping-bag', 'match' => 'purchasing$', 'show' => $can('stock.view')],
-                ['label' => 'الموردين', 'route' => 'purchasing.suppliers.index', 'icon' => 'truck', 'match' => 'purchasing/suppliers*', 'show' => $can('stock.view')],
-                ['label' => 'مرتجعات الموردين', 'route' => 'purchase-returns.index', 'icon' => 'undo-2', 'match' => 'purchase-returns*', 'show' => $can('acc.view')],
-                ['label' => 'المواصفات', 'route' => 'purchasing.specs.index', 'icon' => 'file-text', 'match' => 'purchasing/specs*', 'show' => $can('stock.view')],
-                ['label' => 'الاستثناءات', 'route' => 'overrides.index', 'icon' => 'shield-check', 'match' => 'overrides*', 'show' => $can('stock.view')],
-            ],
-        ],
-        [
-            'key' => 'production',
-            'label' => 'الإنتاج',
-            'items' => [
-                ['label' => 'أوامر الإنتاج', 'route' => 'production.index', 'icon' => 'factory', 'match' => 'production', 'show' => $can('stock.view')],
-                ['label' => 'مسارات الإنتاج', 'route' => 'production.routes', 'icon' => 'git-branch', 'match' => 'production/routes*', 'show' => $can('items.edit')],
-                ['label' => 'شاشات الإنتاج', 'route' => 'production.station', 'icon' => 'monitor', 'match' => 'production/station*', 'show' => $can('prod.orders')],
-                ['label' => 'محطة التغليف', 'route' => 'pack.index', 'icon' => 'package-open', 'match' => 'pack*', 'show' => $can('prod.pack')],
-                ['label' => 'تقرير المصنع (حجوزات الغد)', 'route' => 'reports.factory-reservations', 'icon' => 'factory', 'match' => 'reports/factory-reservations*', 'show' => $can('orders.handle')],
-                ['label' => 'تحميل العربيات', 'route' => 'trips.index', 'icon' => 'truck', 'match' => 'trips*', 'show' => $can('trips.load')],
-            ],
-        ],
-        [
-            'key' => 'accounting',
-            'label' => 'الحسابات',
-            'items' => [
-                ['label' => 'الحسابات العامة', 'route' => 'accounts.index', 'icon' => 'landmark', 'match' => 'accounts', 'show' => $can('acc.view')],
-                ['label' => 'الصناديق والتحويلات', 'route' => 'cash-transfers.index', 'icon' => 'wallet', 'match' => 'cash-transfers*', 'show' => $can('acc.view')],
-                ['label' => 'حسابات الموردين', 'route' => 'accounts.suppliers.index', 'icon' => 'receipt', 'match' => 'accounts/suppliers*', 'show' => $can('acc.view')],
-                ['label' => 'المصروفات', 'route' => 'expenses.index', 'icon' => 'banknote', 'match' => 'expenses*', 'show' => $can('acc.view')],
-                ['label' => 'الورديات', 'route' => 'shifts.index', 'icon' => 'clock', 'match' => 'shifts*', 'show' => $can('acc.view')],
-                ['label' => 'إقفال اليومية', 'route' => 'reports.daily-closing', 'icon' => 'calendar-check', 'match' => 'reports/daily-closing*', 'show' => $can('acc.view')],
-                ['label' => 'مصروفات الورديات', 'route' => 'shift-expenses.index', 'icon' => 'receipt-text', 'match' => 'shift-expenses*', 'show' => $can('acc.view')],
-            ],
-        ],
-        [
-            'key' => 'admin',
-            'label' => 'الإدارة',
-            'items' => [
-                ['label' => 'المواقع والفروع', 'route' => 'locations.index', 'icon' => 'store', 'match' => 'locations*', 'show' => $can('stock.view')],
-                ['label' => 'المستخدمون', 'route' => 'users.index', 'icon' => 'user-round-cog', 'match' => 'users*', 'show' => $can('users.manage')],
-                ['label' => 'الإشعارات', 'route' => 'notifications.index', 'icon' => 'bell', 'match' => 'notifications*', 'show' => true],
-                ['label' => 'سجل التدقيق', 'route' => 'audit.index', 'icon' => 'history', 'match' => 'audit*', 'show' => $can('audit.view')],
-                ['label' => 'الإعدادات', 'route' => 'settings.index', 'icon' => 'settings', 'match' => 'settings*', 'show' => $can('settings.edit')],
-            ],
-        ],
-    ];
-
-    foreach ($sidebarModules as &$module) {
-        foreach ($module['items'] as &$item) {
-            $item['active'] = request()->routeIs($item['route']) || request()->is($item['match']);
+    $sidebarModules = [];
+    foreach ($accessGroups as $g) {
+        $items = [];
+        foreach ($g['links'] as $l) {
+            $match = str_replace(['$'], '', \Illuminate\Support\Str::after($l['route'], '.')) ;
+            // Build a sensible match from route name
+            $matchPatterns = match($l['route']) {
+                'purchasing.index' => ['purchasing', 'purchasing/create', 'purchasing/*/receive*', 'purchasing/receipts*'],
+                'purchasing.suppliers.index' => ['purchasing/suppliers*'],
+                'purchasing.specs.index' => ['purchasing/specs*'],
+                'accounts.index' => ['accounts', 'accounts/suppliers*'],
+                'production.index' => ['production', 'production/create'],
+                'production.routes' => ['production/routes*'],
+                'production.station' => ['production/station*'],
+                'stock.index' => ['stock', 'stock/adjust', 'stock/adjust/*'],
+                'stock.dispose' => ['stock/dispose*'],
+                default => [explode('.', $l['route'])[0] . '*'],
+            };
+            $active = request()->routeIs($l['route']);
+            foreach ($matchPatterns as $mp) { if (request()->is($mp)) { $active = true; break; } }
+            $items[] = [
+                'label' => $l['label'],
+                'route' => $l['route'],
+                'icon' => $l['icon'],
+                'match' => $matchPatterns[0],
+                'show' => $canNav($l['permission']),
+                'active' => $active,
+            ];
         }
-        unset($item);
-        $module['hasActive'] = collect($module['items'])->contains(fn($i) => $i['active'] && $i['show']);
+        $sidebarModules[] = [
+            'key' => $g['key'],
+            'label' => $g['label'],
+            'items' => $items,
+            'hasActive' => collect($items)->contains(fn($i) => $i['active'] && $i['show']),
+        ];
     }
-    unset($module);
 @endphp
 
 <aside

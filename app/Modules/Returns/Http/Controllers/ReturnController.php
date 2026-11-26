@@ -12,31 +12,23 @@ use Illuminate\View\View;
 
 class ReturnController
 {
-    public function __construct(private readonly ReturnService $returns)
-    {
-    }
+    public function __construct(private readonly ReturnService $returns) {}
 
     public function index(): View
     {
         $returns = SalesReturn::with('sale')->orderByDesc('id')->paginate(20);
-
         return view('returns.index', compact('returns'));
     }
 
     public function create(Request $request): View
     {
-        $sales = Sale::orderByDesc('id')->take(50)->get();
-
+        $saleNo = $request->query('sale_no');
         $sale = null;
-        if ($request->filled('sale_id')) {
-            $sale = Sale::with('lines.item')->find($request->input('sale_id'));
+        if ($saleNo) {
+            $sale = Sale::with(['lines.item','lines' => fn($q)=>$q->orderBy('line')])->where('no', $saleNo)->first();
         }
-
-        // Branches a tray can be returned to (the donations location is a
-        // destination, not a branch, so it is excluded here).
-        $locations = Location::where('active', true)->where('id', '!=', 'donate')->orderBy('name')->get();
-
-        return view('returns.create', compact('sales', 'sale', 'locations'));
+        $locations = Location::where('active', true)->whereIn('type', ['dark','shop','factory'])->orderBy('name')->get(['id','name','type']);
+        return view('returns.create', compact('sale','saleNo','locations'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -49,20 +41,23 @@ class ReturnController
             'location_id' => ['nullable', 'exists:locations,id'],
             'refund_method' => ['nullable', 'in:cash,card,none'],
             'reason' => ['nullable', 'string', 'max:255'],
+            'items' => ['sometimes', 'array'],
+            'items.*.selected' => ['nullable'],
+            'items.*.sale_line_id' => ['required', 'exists:sale_lines,id'],
+            'items.*.destination' => ['required', 'in:stock,waste,donation'],
+            'items.*.location_id' => ['nullable', 'exists:locations,id'],
         ]);
 
+        $items = collect($data['items'] ?? [])->filter(fn($i)=>!empty($i['selected']))->values()->all();
+        if (array_key_exists('items', $data) && empty($items)) {
+            return back()->withErrors(['return' => 'اختر صنفًا أو طبقًا واحدًا على الأقل.'])->withInput();
+        }
+
         try {
-            $this->returns->request(
-                Sale::findOrFail($data['sale_id']),
-                array_map('intval', $data['line_ids'] ?? []),
-                $data['destination'] ?? 'stock',
-                $data['location_id'] ?? null,
-                $data['refund_method'] ?? null,
-                $data['reason'] ?? null,
-                $request->user()->id,
-            );
+            $sale = Sale::findOrFail($data['sale_id']);
+            $this->returns->request($sale, $data['reason'] ?? null, $request->user()->id, $items);
         } catch (\RuntimeException $e) {
-            return back()->withErrors(['return' => $e->getMessage()]);
+            return back()->withErrors(['return' => $e->getMessage()])->withInput();
         }
 
         return redirect()->route('returns.index')->with('status', 'تم تسجيل المرتجع');
@@ -70,23 +65,15 @@ class ReturnController
 
     public function approve(Request $request, SalesReturn $return): RedirectResponse
     {
-        try {
-            $this->returns->approve($return, $request->user()->id);
-        } catch (\RuntimeException $e) {
-            return back()->withErrors(['return' => $e->getMessage()]);
-        }
-
+        try { $this->returns->approve($return, $request->user()->id); }
+        catch (\RuntimeException $e) { return back()->withErrors(['return' => $e->getMessage()]); }
         return back()->with('status', 'تمت الموافقة وإعادة المخزون');
     }
 
     public function reject(Request $request, SalesReturn $return): RedirectResponse
     {
-        try {
-            $this->returns->reject($return, $request->user()->id);
-        } catch (\RuntimeException $e) {
-            return back()->withErrors(['return' => $e->getMessage()]);
-        }
-
+        try { $this->returns->reject($return, $request->user()->id); }
+        catch (\RuntimeException $e) { return back()->withErrors(['return' => $e->getMessage()]); }
         return back()->with('status', 'تم رفض المرتجع');
     }
 }

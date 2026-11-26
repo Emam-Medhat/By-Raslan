@@ -6,9 +6,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/**
- * @property string|null $scale_plu
- */
 class Item extends Model
 {
     public const KINDS = [
@@ -20,7 +17,7 @@ class Item extends Model
     ];
 
     protected $fillable = [
-        'family_id', 'name', 'kind', 'unit', 'scale_plu', 'also_families', 'tags', 'active',
+        'family_id', 'name', 'kind', 'unit', 'scale_plu', 'shelf_life_days', 'also_families', 'tags', 'active',
     ];
 
     protected function casts(): array
@@ -29,26 +26,12 @@ class Item extends Model
             'also_families' => 'array',
             'tags' => 'array',
             'active' => 'boolean',
+            'shelf_life_days' => 'integer',
         ];
     }
 
-    public function family(): BelongsTo
-    {
-        return $this->belongsTo(Family::class);
-    }
-
-    public function routes()
-    {
-        return $this->hasMany(\App\Modules\Production\Models\ItemRoute::class);
-    }
-
-    public function barcodes(): HasMany
-    {
-        return $this->hasMany(ItemBarcode::class);
-    }
-
-    public function prices(): HasMany
-    {
-        return $this->hasMany(Price::class);
-    }
+    public function family(): BelongsTo { return $this->belongsTo(Family::class); }
+    public function routes() { return $this->hasMany(\App\Modules\Production\Models\ItemRoute::class); }
+    public function barcodes(): HasMany { return $this->hasMany(ItemBarcode::class); }
+    public function prices(): HasMany { return $this->hasMany(Price::class); }
 }

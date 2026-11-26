@@ -33,22 +33,22 @@ class ShiftManagementTest extends TestCase
         return $clerk->refresh();
     }
 
-    public function test_login_auto_opens_shift_for_cashier(): void
+    public function test_cashier_opens_a_shift_after_selecting_the_branch(): void
     {
         $cashier = $this->cashier();
 
         $this->post('/login', ['login' => $cashier->phone, 'password' => 'password'])->assertRedirect(route('dashboard'));
 
-        $this->assertDatabaseHas('shifts', ['cashier' => $cashier->id, 'status' => 'open']);
+        $this->assertDatabaseMissing('shifts', ['cashier' => $cashier->id, 'status' => 'open']);
+        $this->actingAs($cashier)->get('/pos')->assertOk()->assertSee('فتح الوردية');
     }
 
-    public function test_login_does_not_duplicate_open_shift(): void
+    public function test_opening_the_selected_branch_shift_is_idempotent(): void
     {
         $cashier = $this->cashier();
 
-        $this->post('/login', ['login' => $cashier->phone, 'password' => 'password']);
-        $this->post('/logout');
-        $this->post('/login', ['login' => $cashier->phone, 'password' => 'password']);
+        $this->actingAs($cashier)->post('/pos/open', ['location_id' => 'roushdy', 'opening_cash' => 0]);
+        $this->actingAs($cashier)->post('/pos/open', ['location_id' => 'roushdy', 'opening_cash' => 0]);
 
         $this->assertSame(1, Shift::where('cashier', $cashier->id)->where('status', 'open')->count());
     }
@@ -61,7 +61,9 @@ class ShiftManagementTest extends TestCase
 
         $this->actingAs($cashier)
             ->post('/pos/close', ['shift_id' => $shift->id, 'counted' => 100, 'notes' => 'مطابق'])
-            ->assertRedirect(route('login'));
+            ->assertOk()
+            ->assertSee('تقرير إغلاق اليومية')
+            ->assertSee('إجمالي العهدة الحالية');
 
         $this->assertSame('closed', $shift->fresh()->status);
         $this->assertNotNull($shift->fresh()->logged_out_at);

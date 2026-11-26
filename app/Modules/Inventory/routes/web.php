@@ -5,7 +5,7 @@ use App\Modules\Inventory\Http\Controllers\StockController;
 use App\Modules\Inventory\Http\Controllers\StockCountController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'nav.access'])->group(function () {
     Route::get('/stock', [StockController::class, 'index'])
         ->middleware('perm:stock.view')
         ->name('stock.index');
@@ -23,6 +23,7 @@ Route::middleware(['auth', 'active'])->group(function () {
         ->name('stock.dispose');
 
     Route::post('/stock/dispose', [StockController::class, 'dispose'])
+        ->middleware('perm:stock.adjust')
         ->name('stock.dispose.store');
 
     Route::post('/boxes/resolve-missing', [BoxController::class, 'resolveMissing'])

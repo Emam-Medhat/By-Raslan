@@ -121,4 +121,19 @@ class User extends Authenticatable
     {
         return $query->where('active', true);
     }
+
+    public function accessibleLocationIds(): array
+    {
+        if ($this->isOwner()) return [];
+        $ids = $this->locations()->pluck('locations.id')->all();
+        if ($this->home_location_id) $ids[] = $this->home_location_id;
+        return array_values(array_unique(array_filter($ids)));
+    }
+
+    public function canAccessLocation(?string $locationId): bool
+    {
+        if ($this->isOwner() || !$locationId) return $this->isOwner();
+        $ids = $this->accessibleLocationIds();
+        return empty($ids) ? true : in_array($locationId, $ids, true);
+    }
 }

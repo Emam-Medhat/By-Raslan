@@ -9,21 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ReservationLine extends Model
 {
     public $timestamps = false;
-
-    protected $fillable = ['reservation_id', 'line', 'item_id', 'qty', 'unit_price'];
-
-    protected function casts(): array
-    {
-        return ['qty' => 'decimal:3', 'unit_price' => 'decimal:2'];
-    }
-
-    public function item(): BelongsTo
-    {
-        return $this->belongsTo(Item::class);
-    }
-
-    public function reservation(): BelongsTo
-    {
-        return $this->belongsTo(Reservation::class, 'reservation_id');
-    }
+    protected $fillable = ['reservation_id','item_id','qty','note'];
+    protected function casts(): array { return ['qty' => 'decimal:3']; }
+    public function reservation(): BelongsTo { return $this->belongsTo(Reservation::class); }
+    public function item(): BelongsTo { return $this->belongsTo(Item::class); }
 }

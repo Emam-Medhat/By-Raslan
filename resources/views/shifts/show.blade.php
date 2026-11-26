@@ -36,16 +36,14 @@
             <div class="h-1 w-10 bg-emerald-600 rounded mt-2"></div>
         </div>
         <div class="ds-card p-4">
-            <div class="text-xs text-slate-500">المعدود</div>
-            <div class="text-xl font-extrabold mt-1">{{ $shift->counted_cash !== null ? number_format((float) $shift->counted_cash, 2) . ' ج' : '—' }}</div>
+            <div class="text-xs text-slate-500">نقدي المبيعات</div>
+            <div class="text-xl font-extrabold mt-1">{{ number_format($cashSales, 2) }} ج</div>
             <div class="h-1 w-10 bg-sky-600 rounded mt-2"></div>
         </div>
         <div class="ds-card p-4">
-            <div class="text-xs text-slate-500">الفرق</div>
-            <div class="text-xl font-extrabold mt-1 {{ $difference === null ? '' : ($difference < 0 ? 'text-rose-600' : ($difference > 0 ? 'text-emerald-600' : '')) }}">
-                {{ $difference === null ? '—' : number_format($difference, 2) . ' ج' }}
-            </div>
-            <div class="h-1 w-10 {{ $difference === null ? 'bg-slate-300' : ($difference < 0 ? 'bg-rose-500' : ($difference > 0 ? 'bg-emerald-500' : 'bg-emerald-500')) }} rounded mt-2"></div>
+            <div class="text-xs text-slate-500">تحصيل إلكتروني</div>
+            <div class="text-xl font-extrabold mt-1">{{ number_format($cardSales, 2) }} ج</div>
+            <div class="h-1 w-10 bg-violet-600 rounded mt-2"></div>
         </div>
     </div>
 
@@ -172,11 +170,7 @@
                 <div class="flex justify-between"><span class="text-slate-500">تحصيل أونلاين كاش</span><span class="font-bold">{{ number_format($onlineCash ?? 0, 2) }} ج</span></div>
                 <div class="flex justify-between"><span class="text-slate-500">استرداد مرتجعات كاش</span><span class="font-bold text-red-600">− {{ number_format($cashRefunds ?? 0, 2) }} ج</span></div>
             </div>
-            <p class="text-sm text-slate-500">أدخل النقد المعدود الفعلي في نهاية الشيفت.</p>
-            <div>
-                <label class="block text-sm font-semibold mb-1">الرصيد المعدود</label>
-                <input name="counted_cash" type="number" step="0.01" min="0" required class="w-full ds-input" placeholder="0.00">
-            </div>
+            <p class="text-sm text-slate-500">سيتم إغلاق الوردية وترحيل العهدة المتوقعة تلقائياً.</p>
             <div>
                 <label class="block text-sm font-semibold mb-1">ملاحظات (اختياري)</label>
                 <textarea name="notes" rows="2" class="w-full ds-input" placeholder="أي ملاحظات..."></textarea>

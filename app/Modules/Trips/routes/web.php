@@ -4,7 +4,7 @@ use App\Modules\Trips\Http\Controllers\CrateController;
 use App\Modules\Trips\Http\Controllers\TripController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'nav.access'])->group(function () {
     Route::get('/trips', [TripController::class, 'index'])->name('trips.index');
 
     Route::middleware('perm:settings.edit')->group(function () {

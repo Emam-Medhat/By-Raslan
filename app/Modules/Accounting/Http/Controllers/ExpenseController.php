@@ -16,13 +16,21 @@ class ExpenseController
     {
     }
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $expenses = Expense::with('category')->orderByDesc('id')->paginate(20);
+        $filters = $request->only(['status', 'category_id', 'location_id', 'date_from', 'date_to']);
+        $q = Expense::with('category')->orderByDesc('id');
+        if ($request->filled('status')) $q->where('status', $request->string('status')->toString());
+        if ($request->filled('category_id')) $q->where('category_id', $request->input('category_id'));
+        if ($request->filled('location_id')) $q->where('location_id', $request->input('location_id'));
+        if ($request->filled('date_from')) $q->whereDate('day', '>=', $request->input('date_from'));
+        if ($request->filled('date_to')) $q->whereDate('day', '<=', $request->input('date_to'));
+
+        $expenses = $q->paginate(20)->withQueryString();
         $categories = ExpenseCategory::where('active', true)->orderBy('name')->get();
         $locations = Location::orderBy('name')->get();
 
-        return view('accounts.expenses.index', compact('expenses', 'categories', 'locations'));
+        return view('accounts.expenses.index', compact('expenses', 'categories', 'locations', 'filters'));
     }
 
     public function store(Request $request): RedirectResponse

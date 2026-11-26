@@ -102,7 +102,7 @@ class ShiftCRUDTest extends TestCase
             ->assertSee('رصيد البداية');
     }
 
-    public function test_can_close_shift_with_carryover(): void
+    public function test_closing_shift_carries_the_expected_custody_to_the_next_day(): void
     {
         $owner = $this->owner();
 
@@ -117,22 +117,29 @@ class ShiftCRUDTest extends TestCase
 
         $this->actingAs($owner)
             ->post("/shifts/{$shift->id}/close", [
-                'counted_cash' => 150,
                 'notes' => 'مطابق',
             ])
-            ->assertRedirect(route('shifts.index'));
+            ->assertRedirect(route('shifts.report', $shift));
 
         $shift->refresh();
         $this->assertSame('closed', $shift->status);
-        $this->assertEquals(150, (float) $shift->counted_cash);
-        $this->assertEquals(150, (float) $shift->carryover_to_next_shift);
+        $this->assertNull($shift->counted_cash);
+        $this->assertEquals(100, (float) $shift->expected_cash);
+        $this->assertEquals(100, (float) $shift->carryover_to_next_shift);
 
         // Check carryover transfer created
         $this->assertDatabaseHas('cash_transfers', [
             'from_shift_id' => $shift->id,
             'type' => 'to_next_shift',
-            'amount' => 150,
+            'amount' => 100,
         ]);
+
+        $nextShift = app(\App\Modules\Sales\Services\ShiftService::class)->create([
+            'location_id' => 'roushdy',
+            'cashier' => $owner->id,
+            'opening_cash' => 0,
+        ]);
+        $this->assertEquals(100, (float) $nextShift->opening_cash);
     }
 
     public function test_can_add_shift_expense(): void

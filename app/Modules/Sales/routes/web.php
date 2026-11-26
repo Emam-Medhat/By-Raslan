@@ -7,7 +7,7 @@ use App\Modules\Sales\Http\Controllers\ShiftController;
 use App\Modules\Sales\Http\Controllers\ShiftExpenseController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'nav.access'])->group(function () {
     Route::middleware('perm:pos.sell')->group(function () {
         Route::get('/pos', [PosController::class, 'index'])->name('pos.index');
         Route::post('/pos/open', [PosController::class, 'open'])->name('pos.open');
@@ -34,6 +34,7 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::get('/shifts/export', [ShiftController::class, 'export'])->name('shifts.export');
         Route::post('/shifts', [ShiftController::class, 'store'])->name('shifts.store');
         Route::get('/shifts/{shift}', [ShiftController::class, 'show'])->name('shifts.show');
+        Route::get('/shifts/{shift}/report', [ShiftController::class, 'report'])->name('shifts.report');
         Route::get('/shifts/{shift}/edit', [ShiftController::class, 'edit'])->name('shifts.edit');
         Route::put('/shifts/{shift}', [ShiftController::class, 'update'])->name('shifts.update');
         Route::delete('/shifts/{shift}', [ShiftController::class, 'destroy'])->name('shifts.destroy');

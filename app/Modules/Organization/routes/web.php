@@ -4,7 +4,7 @@ use App\Modules\Organization\Http\Controllers\LocationController;
 use App\Modules\Organization\Http\Controllers\LocationUserController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'nav.access'])->group(function () {
     Route::get('/locations', [LocationController::class, 'index'])
         ->middleware('perm:stock.view')
         ->name('locations.index');

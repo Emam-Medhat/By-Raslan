@@ -39,17 +39,6 @@ class ShiftController
 
         $shifts = $this->shifts->getPaginated($serviceFilters);
         $stats = $this->shifts->getStats();
-        
-        // Add total variance to stats
-        $closedShifts = Shift::where('status', 'closed')
-            ->whereNotNull('counted_cash')
-            ->whereNotNull('expected_cash')
-            ->get(['counted_cash', 'expected_cash']);
-        $totalVariance = 0;
-        foreach ($closedShifts as $s) {
-            $totalVariance += round((float) $s->counted_cash - (float) $s->expected_cash, 2);
-        }
-        $stats['total_variance'] = $totalVariance;
 
         $locations = Location::orderBy('name')->get();
         $users = User::orderBy('name')->get(['id', 'name']);
@@ -85,35 +74,34 @@ class ShiftController
     public function show(Shift $shift): View
     {
         $shift->load(['cashierUser', 'location', 'closedBy']);
-
         $sales = Sale::with('cashierUser')->where('shift_id', $shift->id)->orderBy('id')->get();
         $shiftExpenses = ShiftExpense::with(['user', 'approver'])->where('shift_id', $shift->id)->orderBy('id')->get();
         $cashTransfers = CashTransfer::with(['fromUser', 'toUser', 'approver'])->where('from_shift_id', $shift->id)->orderBy('id')->get();
         $stockMoves = StockMove::with('user')->where('shift_id', $shift->id)->orderBy('id')->get();
         $expenses = Expense::with('category')->where('shift_id', $shift->id)->orderBy('id')->get();
 
-        $cashSales = (float) $sales->sum('paid_cash');
-        $cardSales = (float) $sales->sum('paid_card');
+        $totals = $this->shifts->shiftTotals($shift);
+        $cashSales = $totals['cashSales'];
+        $cardSales = $totals['electronicSales'];
         $change = (float) $sales->sum('change');
-        $shiftExpensesTotal = (float) $shiftExpenses->sum('amount');
+        $shiftExpensesTotal = $totals['shift_expenses_total'];
         $expensesTotal = (float) $expenses->sum('amount');
-        $transfersTotal = (float) $cashTransfers->sum('amount');
-        // One formula for the expected cash (see ShiftService): opening +
-        // POS cash + online cash collections - cash return refunds -
-        // expenses - transfers to manager/safe.
-        $expected = $this->shifts->calculateExpectedCash($shift);
-        $netCash = round($expected - (float) $shift->opening_cash, 2);
-        $onlineCash = (float) $shift->cashCollectionsTotal();
-        $onlineNonCash = (float) $shift->nonCashCollectionsTotal();
-        $cashRefunds = $this->shifts->cashRefundsTotal($shift->id);
-        $difference = $shift->counted_cash !== null ? round((float) $shift->counted_cash - $expected, 2) : null;
+        $transfersTotal = $totals['transfers_out'];
+        $expected = $totals['expected_cash'];
 
         return view('shifts.show', compact(
             'shift', 'sales', 'shiftExpenses', 'cashTransfers', 'stockMoves', 'expenses',
             'cashSales', 'cardSales', 'change', 'shiftExpensesTotal', 'expensesTotal',
-            'transfersTotal', 'expected', 'difference', 'netCash',
-            'onlineCash', 'onlineNonCash', 'cashRefunds'
+            'transfersTotal', 'expected', 'totals'
         ));
+    }
+
+    public function report(Shift $shift): View
+    {
+        $shift->load(['cashierUser','location','closedBy']);
+        $sales = Sale::with('cashierUser')->where('shift_id', $shift->id)->orderBy('id')->get();
+        $totals = $this->shifts->shiftTotals($shift);
+        return view('shifts.report', compact('shift','sales','totals'));
     }
 
     public function edit(Shift $shift): View
@@ -149,21 +137,19 @@ class ShiftController
     public function close(Request $request, Shift $shift): RedirectResponse
     {
         $validated = $request->validate([
-            'counted_cash' => ['required', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
         try {
-            $difference = $this->shifts->closeShift(
+            $this->shifts->closeShift(
                 $shift->id,
-                (float) $validated['counted_cash'],
+                null,
                 auth()->id(),
                 $validated['notes'] ?? null
             );
 
-            $status = $difference < 0 ? 'عجز' : ($difference > 0 ? 'زيادة' : 'مطابق');
-            return redirect()->route('shifts.index')
-                ->with('status', "تم إغلاق الوردية — {$status}: " . number_format(abs($difference), 2));
+            return redirect()->route('shifts.report', $shift->fresh()->id)
+                ->with('status', 'تم إغلاق اليومية وحساب العهدة تلقائيًا.');
         } catch (\RuntimeException $e) {
             return back()->withErrors(['shift' => $e->getMessage()]);
         }
@@ -203,14 +189,11 @@ class ShiftController
         return response()->streamDownload(function () use ($shifts) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['رقم', 'الموظف', 'الفرع', 'الحالة', 'البداية', 'النهاية', 'رصيد البداية', 'المتوقع', 'المعدود', 'الفرق']);
+            fputcsv($out, ['رقم', 'الموظف', 'الفرع', 'الحالة', 'البداية', 'النهاية', 'رصيد البداية', 'العهدة عند الإغلاق']);
             foreach ($shifts as $s) {
-                $diff = $s->counted_cash !== null && $s->expected_cash !== null
-                    ? round((float) $s->counted_cash - (float) $s->expected_cash, 2)
-                    : '';
                 fputcsv($out, [
                     $s->id, $s->cashierUser?->name, $s->location_id, $s->status,
-                    $s->opened_at, $s->closed_at, $s->opening_cash, $s->expected_cash, $s->counted_cash, $diff,
+                    $s->opened_at, $s->closed_at, $s->opening_cash, $s->expected_cash,
                 ]);
             }
             fclose($out);

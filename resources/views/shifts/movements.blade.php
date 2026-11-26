@@ -44,14 +44,10 @@
         @endforeach
     </div>
 
-    <div class="ds-card p-4 grid gap-2 sm:grid-cols-4 text-sm">
+    <div class="ds-card p-4 grid gap-2 sm:grid-cols-3 text-sm">
         <div class="flex justify-between"><span class="text-slate-500">المتوقع</span><span class="font-bold">{{ number_format($expected, 2) }} ج</span></div>
-        <div class="flex justify-between"><span class="text-slate-500">المعدود</span><span class="font-bold">{{ $shift->counted_cash !== null ? number_format((float) $shift->counted_cash, 2) . ' ج' : '—' }}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">رصيد البداية</span><span class="font-bold">{{ number_format((float) $shift->opening_cash, 2) }} ج</span></div>
         <div class="flex justify-between"><span class="text-slate-500">المحول للمدير</span><span class="font-bold">{{ number_format($transfersTotal, 2) }} ج</span></div>
-        <div class="flex justify-between"><span class="text-slate-500">الفرق</span>
-            @php($diff = $shift->counted_cash !== null ? round((float)$shift->counted_cash - $expected, 2) : null)
-            <span class="font-bold {{ $diff === null ? '' : ($diff < 0 ? 'text-rose-600' : ($diff > 0 ? 'text-emerald-600' : '')) }}">{{ $diff === null ? '—' : number_format($diff, 2) . ' ج' }}</span>
-        </div>
     </div>
 
     {{-- Sales --}}

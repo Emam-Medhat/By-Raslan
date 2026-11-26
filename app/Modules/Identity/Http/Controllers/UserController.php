@@ -4,14 +4,17 @@ namespace App\Modules\Identity\Http\Controllers;
 
 use App\Models\User;
 use App\Modules\Identity\Http\Requests\StoreUserRequest;
+use App\Modules\Identity\Http\Requests\UpdateUserRequest;
 use App\Modules\Identity\Models\Permission;
 use App\Modules\Identity\Models\Role;
 use App\Modules\Identity\Services\PermissionService;
+use App\Modules\Identity\Support\AccessRegistry;
+use App\Modules\Identity\Support\ModuleRegistry;
 use App\Shared\Support\Result;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class UserController
@@ -23,73 +26,90 @@ class UserController
     public function index(): View
     {
         $users = User::with(['roles', 'permissions'])->orderBy('name')->get();
+        $modules = ModuleRegistry::modules();
 
-        return view('users.index', compact('users'));
+        return view('users.index', compact('users', 'modules'));
     }
 
     public function create(): View
     {
-        $permissions = Permission::orderBy('grp')->orderBy('id')->get();
         $roles = Role::orderBy('name')->get();
+        $accessGroups = AccessRegistry::groups();
 
-        return view('users.create', compact('permissions', 'roles'));
+        return view('users.create', compact('roles', 'accessGroups'));
     }
 
     public function edit(User $user): View
     {
-        $permissions = Permission::orderBy('grp')->orderBy('id')->get();
+        $roles = Role::orderBy('name')->get();
+        $accessGroups = AccessRegistry::groups();
+        $user->load(['roles', 'permissions']);
 
-        return view('users.edit', compact('user', 'permissions'));
-    }
-
-    public function update(Request $request, User $user): RedirectResponse
-    {
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:120'],
-            'phone' => ['required', 'string', 'max:20', Rule::unique('users', 'phone')->ignore($user->id)],
-            'email' => ['nullable', 'email', 'max:190', Rule::unique('users', 'email')->ignore($user->id)],
-            'password' => ['nullable', 'string', 'min:8', 'max:255'],
-            'active' => ['sometimes', 'boolean'],
-        ]);
-
-        $user->name = $data['name'];
-        $user->phone = preg_replace('/\D+/', '', (string) $data['phone']);
-        $user->email = $data['email'] ?? null;
-        $user->active = $data['active'] ?? $user->active;
-        if (! empty($data['password'])) {
-            $user->password = Hash::make($data['password']);
-        }
-        $user->save();
-
-        return redirect()->route('users.index')->with('status', 'تم تحديث المستخدم');
+        return view('users.edit', compact('user', 'roles', 'accessGroups'));
     }
 
     public function store(StoreUserRequest $request): RedirectResponse
     {
         $data = $request->validated();
+        $actor = $request->user();
+        $perms = $request->resolvedPermissions();
+        $this->assertCanAssignPermissions($actor, $perms);
 
-        $user = User::create([
-            'name' => $data['name'],
-            'phone' => preg_replace('/\D+/', '', (string) $data['phone']),
-            'email' => $data['email'] ?? null,
-            'password' => Hash::make($data['password']),
-            'active' => $data['active'] ?? true,
-        ]);
+        $user = DB::transaction(function () use ($request, $data, $actor, $perms) {
+            $user = User::create([
+                'name' => $data['name'],
+                'phone' => preg_replace('/\D+/', '', (string) $data['phone']),
+                'email' => $data['email'] ?? null,
+                'password' => Hash::make($data['password']),
+                'active' => $request->boolean('active', true),
+            ]);
 
-        if (! empty($data['role_id'])) {
-            $user->roles()->sync([(int) $data['role_id']]);
-        }
+            $user->roles()->sync(! empty($data['role_id']) ? [(int) $data['role_id']] : []);
 
-        // Grant any permissions submitted with the new user (anti-escalation applies).
-        foreach ((array) $request->input('permissions', []) as $perm) {
-            $this->permissions->grant($request->user(), $user, $perm);
-        }
+            $sync = [];
+            foreach ($perms as $perm) {
+                $sync[$perm] = ['until' => null, 'max_amount' => null, 'granted_by' => $actor->id];
+            }
+            $user->permissions()->sync($sync);
+
+            return $user;
+        });
 
         return redirect()->route('users.index')->with('status', "تمت إضافة المستخدم {$user->name}");
     }
 
+    public function update(UpdateUserRequest $request, User $user): RedirectResponse
+    {
+        $data = $request->validated();
+        $actor = $request->user();
+        $perms = $request->resolvedPermissions();
+        $this->assertCanAssignPermissions($actor, $perms);
+
+        DB::transaction(function () use ($request, $data, $user, $actor, $perms) {
+            $user->name = $data['name'];
+            $user->phone = preg_replace('/\D+/', '', (string) $data['phone']);
+            $user->email = $data['email'] ?? null;
+            $user->active = $request->boolean('active', false);
+            if (! empty($data['password'])) {
+                $user->password = Hash::make($data['password']);
+            }
+            $user->save();
+
+            $user->roles()->sync(! empty($data['role_id']) ? [(int) $data['role_id']] : []);
+
+            $sync = [];
+            foreach ($perms as $perm) {
+                $sync[$perm] = ['until' => null, 'max_amount' => null, 'granted_by' => $actor->id];
+            }
+            $user->permissions()->sync($sync);
+        });
+
+        return redirect()->route('users.index')->with('status', 'تم تحديث المستخدم');
+    }
+
     public function toggle(Request $request, User $user): RedirectResponse
     {
+        abort_if($user->isOwner(), 403, 'لا يمكن تعطيل حساب المالك');
         $user->update(['active' => ! $user->active]);
 
         return back()->with('status', $user->active ? 'تم تفعيل الحساب' : 'تم تعطيل الحساب');
@@ -123,6 +143,23 @@ class UserController
         $result = $this->permissions->revoke($request->user(), $user, $validated['permission']);
 
         return $this->respond($result, 'users.index');
+    }
+
+    private function assertCanAssignPermissions(User $actor, array $perms): void
+    {
+        if ($actor->isOwner()) {
+            return;
+        }
+
+        $allowed = $actor->effectivePermissions()->all();
+        foreach ($perms as $perm) {
+            if (! in_array($perm, $allowed, true)) {
+                abort(403, 'لا يمكنك إسناد صلاحية لا تملكها: ' . $perm);
+            }
+        }
+        if (in_array('users.manage', $perms, true)) {
+            abort(403, 'لا يمكنك إسناد صلاحية إدارة المستخدمين');
+        }
     }
 
     private function respond(Result $result, string $redirect): RedirectResponse

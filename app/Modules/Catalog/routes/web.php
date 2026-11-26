@@ -4,7 +4,7 @@ use App\Modules\Catalog\Http\Controllers\ItemController;
 use App\Modules\Catalog\Http\Controllers\PriceController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'nav.access'])->group(function () {
     // Items — read for stock viewers, write for catalog editors.
     Route::get('/items', [ItemController::class, 'index'])
         ->middleware('perm:stock.view')

@@ -8,10 +8,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Strict shift lock: a pure cashier (pos.sell, without pos.shift) may not run
- * financial/operational actions without an open shift. Owners and shift
- * managers (pos.shift) bypass. This is a server-side backstop — the primary
- * lock is session invalidation on close.
+ * POS transactions must always belong to an open cashier shift.
  */
 class EnsureActiveShift
 {
@@ -19,12 +16,7 @@ class EnsureActiveShift
     {
         $user = $request->user();
 
-        if (! $user || $user->isOwner()) {
-            return $next($request);
-        }
-
-        // Only pure cashiers are shift-bound.
-        if (! $user->hasPermission('pos.sell') || $user->hasPermission('pos.shift')) {
+        if (! $user) {
             return $next($request);
         }
 

@@ -14,37 +14,35 @@ use Illuminate\Support\Facades\DB;
 class ReturnService
 {
     /**
-     * Request a return for one invoice. A return is only possible after an
-     * invoice exists.
-     *
-     * @param  list<int>  $lineIds  sale line ids to return; empty = whole invoice
+     * @param array<int,array{sale_line_id:int,destination:string,location_id?:string}> $selections
      */
-    public function request(
-        Sale $sale,
-        array $lineIds = [],
-        ?string $destination = 'stock',
-        ?string $locationId = null,
-        ?string $refundMethod = null,
-        ?string $reason = null,
-        ?string $by = null,
-    ): SalesReturn {
-        $destination ??= 'stock';
-        if (! in_array($destination, SalesReturn::DESTINATIONS, true)) {
-            throw new \RuntimeException('وجهة المرتجع لازم مخزون أو هالك أو تبرعات');
-        }
-
-        $locationId ??= $sale->location_id;
-        if (! Location::where('id', $locationId)->where('active', true)->exists()) {
-            throw new \RuntimeException('الفرع اللي رجع له المرتجع مش موجود');
-        }
-
-        $refundMethod ??= ((float) $sale->paid_cash - (float) $sale->change) > 0 ? 'cash' : 'card';
-        if (! in_array($refundMethod, SalesReturn::REFUND_METHODS, true)) {
-            throw new \RuntimeException('طريقة الاسترداد لازم كاش أو فيزا أو بدون استرداد');
-        }
-
-        return DB::transaction(function () use ($sale, $lineIds, $destination, $locationId, $refundMethod, $reason, $by) {
+    public function request(Sale $sale, ?string $reason, ?string $by, array $selections = []): SalesReturn
+    {
+        return DB::transaction(function () use ($sale, $reason, $by, $selections) {
             $sale->load('lines');
+            if ($selections === []) {
+                // backward compat: return all lines to stock
+                foreach ($sale->lines as $l) $selections[] = ['sale_line_id' => $l->id, 'destination' => 'stock'];
+            }
+
+            $selectedIds = collect($selections)->pluck('sale_line_id')->map(fn($v)=>(int)$v)->all();
+            if (count($selectedIds) !== count(array_unique($selectedIds))) {
+                throw new \RuntimeException('تم اختيار نفس الصنف أكثر من مرة.');
+            }
+            $lines = $sale->lines->whereIn('id', $selectedIds)->keyBy('id');
+            if ($lines->count() !== count($selectedIds)) {
+                throw new \RuntimeException('بعض الأصناف المختارة لا تتبع الفاتورة.');
+            }
+            if ($lines->isEmpty()) throw new \RuntimeException('اختر طبقًا أو صنفًا واحدًا على الأقل للإرجاع.');
+
+            // prevent duplicate return for same sale line when already approved/pending? simple guard:
+            $already = SalesReturnLine::whereIn('sale_line_id', $selectedIds)
+                ->whereHas('salesReturn', fn($q) => $q->whereIn('status', ['pending','approved']))
+                ->exists();
+            if ($already) throw new \RuntimeException('بعض الأصناف المختارة تم إرجاعها بالفعل أو قيد مراجعة.');
+
+            $destination = collect($selections)->pluck('destination')->unique()->count() === 1 ? (collect($selections)->first()['destination'] ?? 'stock') : 'mixed';
+            $destLoc = collect($selections)->pluck('location_id')->filter()->first() ?: $sale->location_id;
 
             $lines = $sale->lines;
             if ($lineIds !== []) {
@@ -75,13 +73,19 @@ class ReturnService
                 'refund_method' => $refundMethod,
                 'refund_amount' => 0,
                 'status' => 'pending',
+                'destination' => $destination,
+                'destination_location_id' => $destLoc,
                 'reason' => $reason,
                 'by' => $by,
                 'at' => now(),
             ]);
 
             $sub = 0.0;
-            foreach ($lines as $line) {
+            foreach ($selections as $sel) {
+                $line = $lines->get((int)$sel['sale_line_id']);
+                if (! $line) continue;
+                $dest = in_array($sel['destination'] ?? 'stock', ['stock','waste','donation'], true) ? $sel['destination'] : 'stock';
+                $lineLocation = $sel['location_id'] ?? $sale->location_id;
                 SalesReturnLine::create([
                     'return_id' => $return->id,
                     'sale_line_id' => $line->id,
@@ -90,18 +94,13 @@ class ReturnService
                     'qty' => $line->qty,
                     'unit_price' => $line->unit_price,
                     'total' => $line->total,
+                    'destination' => $dest,
+                    'destination_location_id' => $lineLocation,
                 ]);
                 $sub += (float) $line->total;
             }
 
-            // The refund never exceeds what is still un-refunded on this sale.
-            $alreadyRefunded = (float) SalesReturn::where('sale_id', $sale->id)
-                ->where('status', 'approved')
-                ->sum('refund_amount');
-            $refund = $refundMethod === 'none' ? 0.0 : max(0.0, min(round($sub, 2), round((float) $sale->total - $alreadyRefunded, 2)));
-
-            $return->update(['subtotal' => round($sub, 2), 'total' => round($sub, 2), 'refund_amount' => $refund]);
-
+            $return->update(['subtotal' => round($sub, 2), 'total' => round($sub, 2)]);
             return $return;
         });
     }
@@ -109,11 +108,8 @@ class ReturnService
     public function approve(SalesReturn $return, ?string $by): void
     {
         DB::transaction(function () use ($return, $by) {
-            $return = SalesReturn::where('id', $return->id)->lockForUpdate()->firstOrFail();
-
-            if ($return->status !== 'pending') {
-                throw new \RuntimeException('المرتجع ده مش مستني موافقة');
-            }
+            $return = SalesReturn::where('id', $return->id)->lockForUpdate()->with('lines')->firstOrFail();
+            if ($return->status !== 'pending') throw new \RuntimeException('المرتجع ده مش مستني موافقة');
 
             $destination = $return->destination;
 
@@ -131,48 +127,31 @@ class ReturnService
             $return->shift_id = $shiftId;
 
             foreach ($return->lines as $line) {
+                $dest = $line->destination ?: $return->destination ?: 'stock';
+                $destLocation = $line->destination_location_id ?: $return->destination_location_id ?: $return->location_id;
+
                 if ($line->box_sn !== null) {
                     $box = Box::where('sn', $line->box_sn)->lockForUpdate()->first();
+                    if (! $box) continue;
+                    if ($box->status !== 'sold' || (int) $box->sale_id !== (int) $return->sale_id) {
+                        throw new \RuntimeException('الطبق لم يعد مبيعاً على هذه الفاتورة.');
+                    }
 
-                    if ($box && $box->status === 'sold') {
-                        $this->applyBoxDestination($box, $destination, $return, $by);
+                    if ($dest === 'waste') {
+                        $box->update(['status' => 'waste', 'location_id' => $destLocation, 'returned_at' => now()]);
+                        StockMove::create(['item_id'=>$box->item_id,'location_id'=>$destLocation,'qty'=>0,'kind'=>'waste','reason'=>'مرتجع هالك #'.$return->no,'ref'=>'R'.$return->no,'box_sn'=>$box->sn,'by'=>$by]);
+                    } elseif ($dest === 'donation') {
+                        $box->update(['status' => 'donated', 'location_id' => 'donate', 'returned_at' => now()]);
+                        StockMove::create(['item_id'=>$box->item_id,'location_id'=>'donate','qty'=>abs((float)$box->weight),'kind'=>'donate','reason'=>'مرتجع تبرعات #'.$return->no,'ref'=>'R'.$return->no,'box_sn'=>$box->sn,'by'=>$by]);
+                    } else {
+                        $box->update(['status' => 'stock', 'location_id' => $destLocation, 'returned_at' => now(), 'sale_id' => null, 'sold_at' => null]);
+                        StockMove::create(['item_id'=>$box->item_id,'location_id'=>$destLocation,'qty'=>abs((float)$box->weight),'kind'=>'return','reason'=>'مرتجع للمخزون #'.$return->no,'ref'=>'R'.$return->no,'box_sn'=>$box->sn,'by'=>$by]);
                     }
                 } else {
-                    // Loose-qty line (no tray): only a stock return adds
-                    // quantity back; waste/donated trays are simply gone.
-                    if ($destination === 'stock') {
-                        StockMove::create([
-                            'item_id' => $line->item_id,
-                            'location_id' => $return->location_id,
-                            'qty' => (float) $line->qty,
-                            'kind' => 'return',
-                            'ref' => 'R'.$return->no,
-                            'by' => $by,
-                            'shift_id' => $return->shift_id,
-                        ]);
-                    } elseif ($destination === 'donated') {
-                        StockMove::create([
-                            'item_id' => $line->item_id,
-                            'location_id' => 'donate',
-                            'qty' => (float) $line->qty,
-                            'kind' => 'donate',
-                            'reason' => $return->reason ?: 'مرتجع تبرع',
-                            'ref' => 'R'.$return->no,
-                            'by' => $by,
-                            'shift_id' => $return->shift_id,
-                        ]);
-                    } else {
-                        StockMove::create([
-                            'item_id' => $line->item_id,
-                            'location_id' => $return->location_id,
-                            'qty' => 0,
-                            'kind' => 'waste',
-                            'reason' => $return->reason ?: 'مرتجع هالك',
-                            'ref' => 'R'.$return->no,
-                            'by' => $by,
-                            'shift_id' => $return->shift_id,
-                        ]);
-                    }
+                    $kind = $dest === 'waste' ? 'waste' : ($dest === 'donation' ? 'donate' : 'return');
+                    $loc = $dest === 'donation' ? 'donate' : $destLocation;
+                    $qty = $dest === 'waste' ? 0 : abs((float)$line->qty);
+                    StockMove::create(['item_id'=>$line->item_id,'location_id'=>$loc,'qty'=>$qty,'kind'=>$kind,'reason'=>'مرتجع #'.$return->no,'ref'=>'R'.$return->no,'by'=>$by]);
                 }
             }
 
@@ -254,10 +233,7 @@ class ReturnService
 
     public function reject(SalesReturn $return, ?string $by): void
     {
-        if ($return->status !== 'pending') {
-            throw new \RuntimeException('المرتجع ده مش مستني موافقة');
-        }
-
+        if ($return->status !== 'pending') throw new \RuntimeException('المرتجع ده مش مستني موافقة');
         $return->update(['status' => 'rejected', 'decided_by' => $by, 'decided_at' => now()]);
     }
 }

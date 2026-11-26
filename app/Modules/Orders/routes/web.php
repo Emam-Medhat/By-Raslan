@@ -3,6 +3,7 @@
 use App\Modules\Orders\Http\Controllers\DriverController;
 use App\Modules\Orders\Http\Controllers\OrderController;
 use App\Modules\Orders\Http\Controllers\PublicOrderController;
+use App\Modules\Orders\Http\Controllers\OrderCollectionController;
 use App\Modules\Orders\Http\Controllers\ReservationController;
 use App\Modules\Orders\Http\Controllers\ShopController;
 use Illuminate\Support\Facades\Route;
@@ -17,7 +18,7 @@ Route::get('/track/{token}', [ShopController::class, 'track'])->name('shop.track
 |--------------------------------------------------------------------------
 */
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'nav.access'])->group(function () {
     Route::get('/orders', [OrderController::class, 'index'])
         ->middleware('perm:orders.handle')->name('orders.index');
 
@@ -50,6 +51,14 @@ Route::middleware(['auth', 'active'])->group(function () {
         // Receiving / collection (الشاشة الرابعة); deliver is the legacy name.
         Route::post('/orders/{order}/receive', [OrderController::class, 'receive'])->name('orders.receive');
         Route::post('/orders/{order}/deliver', [OrderController::class, 'deliver'])->name('orders.deliver');
+        Route::get('/order-collections', [OrderCollectionController::class, 'index'])->name('orders.collections');
+        Route::post('/orders/{order}/collect', [OrderCollectionController::class, 'store'])->name('orders.collect');
+
+        Route::get('/reservations', [ReservationController::class, 'index'])->name('reservations.index');
+        Route::post('/reservations', [ReservationController::class, 'store'])->name('reservations.store');
+        Route::post('/reservations/{reservation}/confirm', [ReservationController::class, 'confirm'])->name('reservations.confirm');
+        Route::post('/reservations/{reservation}/convert', [ReservationController::class, 'convert'])->name('reservations.convert');
+        Route::post('/reservations/{reservation}/cancel', [ReservationController::class, 'cancel'])->name('reservations.cancel');
     });
 });
 

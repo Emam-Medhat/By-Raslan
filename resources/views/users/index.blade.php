@@ -5,9 +5,15 @@
 
 @section('content')
 <div class="space-y-4">
-    <div class="flex items-center justify-between">
-        <h1 class="text-xl font-bold">المستخدمون</h1>
-        <a href="{{ route('users.create') }}" class="ds-btn ds-btn-primary">إضافة مستخدم</a>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+            <h1 class="text-xl sm:text-2xl font-extrabold text-primary-800">المستخدمون</h1>
+            <p class="text-sm text-slate-500 mt-1">إدارة الحسابات، تفعيلها، وصلاحياتها المباشرة.</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <a href="{{ route('roles.index') }}" class="ds-btn ds-btn-secondary"><x-icon name="shield-check" size="16" /> الأدوار</a>
+            <a href="{{ route('users.create') }}" class="ds-btn ds-btn-primary"><x-icon name="plus" size="16" /> إضافة مستخدم</a>
+        </div>
     </div>
 
     <div class="ds-table-wrap">
@@ -49,10 +55,15 @@
                             </span>
                         </td>
                         <td>
-                            <form method="POST" action="{{ route('users.toggle', $user) }}" class="inline">
-                                @csrf
-                                <button class="ds-btn ds-btn-sm ds-btn-secondary">{{ $user->active ? 'تعطيل' : 'تفعيل' }}</button>
-                            </form>
+                            <div class="flex items-center gap-2">
+                                @can('users.manage')
+                                    <a href="{{ route('users.edit', $user) }}" class="ds-btn ds-btn-sm ds-btn-secondary"><x-icon name="pencil" size="14" /> تعديل</a>
+                                @endcan
+                                <form method="POST" action="{{ route('users.toggle', $user) }}" class="inline">
+                                    @csrf
+                                    <button class="ds-btn ds-btn-sm {{ $user->active ? 'ds-btn-danger' : 'ds-btn-primary' }}">{{ $user->active ? 'تعطيل' : 'تفعيل' }}</button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                 @empty

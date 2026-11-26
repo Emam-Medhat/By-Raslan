@@ -19,10 +19,10 @@
     <div class="ds-card p-5">
         <form method="GET" action="{{ route('boxes.index') }}" class="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div class="flex-1">
-                <label class="ds-label">رقم العلبة (SN)</label>
+                <label class="ds-label">الرقم المميز للطبق / SN</label>
                 <div class="relative">
                     <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400"><x-icon name="barcode" size="16" /></span>
-                    <input name="sn" value="{{ $sn }}" placeholder="أدخل رقم العلبة..." class="ds-input pr-10" dir="ltr" autofocus>
+                    <input name="sn" value="{{ $sn }}" placeholder="امسح QR أو أدخل الرقم المميز..." class="ds-input pr-10" dir="ltr" autofocus>
                 </div>
             </div>
             <div class="flex gap-2">
@@ -37,7 +37,7 @@
     @if ($sn && ! $box)
         <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center gap-2">
             <x-icon name="alert-triangle" size="16" />
-            لا توجد علبة بالرقم <span class="font-bold" dir="ltr">{{ $sn }}</span>
+            لا يوجد طبق بالرقم <span class="font-bold" dir="ltr">{{ $sn }}</span>
         </div>
     @endif
 
@@ -62,15 +62,17 @@
         </div>
 
         <div class="ds-card p-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-            <div><span class="text-slate-400">رقم العلبة:</span> <span class="font-semibold font-mono" dir="ltr">#{{ $box->sn }}</span></div>
+            <div><span class="text-slate-400">الرقم المميز:</span> <span class="font-semibold font-mono" dir="ltr">#{{ $box->uid ?: $box->sn }}</span></div>
             <div><span class="text-slate-400">PLU الميزان:</span> <span class="font-semibold" dir="ltr">{{ $box->scale_code ?? '—' }}</span></div>
-            <div><span class="text-slate-400">تاريخ التعبئة:</span> <span class="font-semibold">{{ optional($box->packed_at)->format('Y-m-d H:i') ?? '—' }}</span></div>
+            <div><span class="text-slate-400">تاريخ الإنتاج:</span> <span class="font-semibold">{{ optional($box->produced_at ?? $box->packed_at)->format('Y-m-d H:i') ?? '—' }}</span></div>
+            <div><span class="text-slate-400">الفرع الحالي:</span> <span class="font-semibold">{{ $box->location?->name ?? $box->location_id ?? '—' }}</span></div>
+            <div><span class="text-slate-400">تاريخ البيع:</span> <span class="font-semibold">{{ optional($box->sold_at)->format('Y-m-d H:i') ?? '—' }}</span></div>
             <div><span class="text-slate-400">تاريخ الانتهاء:</span> <span class="font-semibold">{{ optional($box->expires_at)->format('Y-m-d') ?? '—' }}</span></div>
         </div>
 
         @if ($box->status === 'missing' && auth()->user()?->hasPermission('stock.adjust'))
             <div class="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <div class="font-bold text-amber-800 mb-3"><x-icon name="circle-alert" size="16" class="ml-1" /> العلبة متسجلة ناقصة — حسم الحالة</div>
+                <div class="font-bold text-amber-800 mb-3"><x-icon name="circle-alert" size="16" class="ml-1" /> الطبق متسجل ناقص — حسم الحالة</div>
                 <form method="POST" action="{{ route('boxes.resolve-missing') }}" class="flex flex-wrap gap-3 items-end">
                     @csrf
                     <input type="hidden" name="sn" value="{{ $box->sn }}">
@@ -112,7 +114,7 @@
                                 <td class="text-xs text-slate-500">{{ $move->reason ?? '—' }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="6" class="ds-empty">لا توجد حركات مسجلة لهذه العلبة</td></tr>
+                            <tr><td colspan="6" class="ds-empty">لا توجد حركات مسجلة لهذا الطبق</td></tr>
                         @endforelse
                     </tbody>
                 </table>

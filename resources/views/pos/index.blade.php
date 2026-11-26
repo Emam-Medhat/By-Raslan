@@ -220,12 +220,36 @@
                                 <span class="font-bold text-primary-800 num" x-text="subtotal.toFixed(2) + ' ج.م'"></span>
                             </div>
 
-                            <div>
-                                <label class="ds-label">الخصم</label>
-                                <div class="relative">
-                                    <input x-model.number="discount" type="number" step="0.01" min="0" class="ds-input h-11 pl-14 font-semibold num" placeholder="0.00">
-                                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">ج.م</span>
+                            <div class="grid gap-3 sm:grid-cols-2">
+                                <div><label class="ds-label">اسم العميل (اختياري)</label><input x-model="customerName" class="ds-input h-11" placeholder="اسم العميل"></div>
+                                <div><label class="ds-label">هاتف العميل</label><input x-model="customerPhone" class="ds-input h-11" dir="ltr" placeholder="01..."></div>
+                            </div>
+
+                            <div class="grid gap-3 sm:grid-cols-2">
+                                <div>
+                                    <label class="ds-label">الخصم</label>
+                                    <div class="relative">
+                                        <input x-model.number="discount" type="number" step="0.01" min="0" class="ds-input h-11 pl-14 font-semibold num" placeholder="0.00">
+                                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">ج.م</span>
+                                    </div>
                                 </div>
+                                <div>
+                                    <label class="ds-label">خدمة التوصيل</label>
+                                    <div class="relative">
+                                        <input x-model.number="deliveryFee" type="number" step="0.01" min="0" class="ds-input h-11 pl-14 font-semibold num" placeholder="0.00">
+                                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">ج.م</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" x-model="delivery" class="rounded"> طلب توصيل</label>
+                            <div x-show="delivery">
+                                <label class="ds-label">الطيار</label>
+                                <select x-model="driverId" class="ds-input h-11">
+                                    <option value="">— اختر الطيار —</option>
+                                    @foreach(($drivers ?? []) as $d)
+                                        <option value="{{ $d->id }}">{{ $d->name }}</option>
+                                    @endforeach
+                                </select>
                             </div>
 
                             <div>
@@ -260,22 +284,31 @@
 
                             <div class="border-t border-slate-100 pt-4 space-y-3">
                                 <div>
+                                    <label class="ds-label">طريقة التحصيل</label>
+                                    <select x-model="payMethod" class="ds-input h-11">
+                                        <option value="cash">Cash</option>
+                                        <option value="card">Visa</option>
+                                        <option value="instapay">InstaPay</option>
+                                        <option value="wallet">Wallet</option>
+                                        <option value="mixed">مختلط</option>
+                                    </select>
+                                </div>
+                                <div x-show="payMethod==='cash' || payMethod==='mixed'">
                                     <label class="ds-label">نقدي</label>
                                     <div class="relative">
                                         <input x-model.number="cash" type="number" step="0.01" min="0" class="ds-input h-11 pl-14 font-semibold num" :placeholder="total.toFixed(2)">
                                         <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">ج.م</span>
                                     </div>
                                 </div>
-                                <div class="flex flex-wrap gap-2">
+                                <div class="flex flex-wrap gap-2" x-show="payMethod==='cash' || payMethod==='mixed'">
                                     <template x-for="v in quickCash()" :key="'c'+v">
-                                        <button @click="cash = v" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 hover:border-accent-300 hover:bg-accent-50 hover:text-accent-700 transition">
+                                        <button @click="cash = v" type="button" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 hover:border-accent-300 hover:bg-accent-50 hover:text-accent-700 transition">
                                             <span x-text="v === Math.ceil(total) && total > 0 ? 'مظبوط' : v"></span>
                                         </button>
                                     </template>
                                 </div>
-
-                                <div>
-                                    <label class="ds-label">فيزا / بطاقة</label>
+                                <div x-show="payMethod!=='cash'">
+                                    <label class="ds-label">إلكتروني / بطاقة / محفظة</label>
                                     <div class="relative">
                                         <input x-model.number="card" type="number" step="0.01" min="0" class="ds-input h-11 pl-14 font-semibold num" placeholder="0.00">
                                         <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">ج.م</span>
@@ -362,10 +395,11 @@
                 <hr style="border:0; border-top:1px dashed #000; margin:4px 0;">
                 <div style="display:flex; justify-content:space-between;"><span>المجموع</span><span x-text="Number(rec?.subtotal||0).toFixed(2)"></span></div>
                 <div x-show="(rec?.disc||0) > 0" style="display:flex; justify-content:space-between;"><span>خصم</span><span x-text="'-' + Number(rec?.disc||0).toFixed(2)"></span></div>
-                <div x-show="(rec?.deliveryFee||0) > 0" style="display:flex; justify-content:space-between;"><span>رسوم توصيل</span><span x-text="Number(rec?.deliveryFee||0).toFixed(2)"></span></div>
+                <div x-show="(rec?.delivery_fee||0) > 0" style="display:flex; justify-content:space-between;"><span>توصيل</span><span x-text="Number(rec?.delivery_fee||0).toFixed(2)"></span></div>
                 <div style="display:flex; justify-content:space-between; font-weight:800; font-size:11pt; margin:2px 0;"><span>الإجمالي</span><span x-text="Number(rec?.total||0).toFixed(2)"></span></div>
+                <div style="display:flex; justify-content:space-between;"><span>طريقة التحصيل</span><span x-text="rec?.pay_method || ''"></span></div>
                 <div x-show="(rec?.cash||0) > 0" style="display:flex; justify-content:space-between;"><span>نقدي</span><span x-text="Number(rec?.cash||0).toFixed(2)"></span></div>
-                <div x-show="(rec?.card||0) > 0" style="display:flex; justify-content:space-between;"><span>فيزا</span><span x-text="Number(rec?.card||0).toFixed(2)"></span></div>
+                <div x-show="(rec?.card||0) > 0" style="display:flex; justify-content:space-between;"><span>إلكتروني</span><span x-text="Number(rec?.card||0).toFixed(2)"></span></div>
                 <div x-show="(rec?.change||0) > 0" style="display:flex; justify-content:space-between;"><span>الباقي</span><span x-text="Number(rec?.change||0).toFixed(2)"></span></div>
                 <hr style="border:0; border-top:1px dashed #000; margin:4px 0;">
                 <div style="text-align:center; font-size:8pt;">شكرًا لزيارتك — <span x-text="shift.cashier_name"></span></div>
@@ -481,6 +515,12 @@
             code: '',
             cart: [],
             discount: 0,
+            deliveryFee: 0,
+            delivery: false,
+            driverId: '',
+            customerName: '',
+            customerPhone: '',
+            payMethod: 'cash',
             cash: 0,
             card: 0,
             deliveryFee: 0,
@@ -519,7 +559,7 @@
                 [50,100,200,500].forEach(v => { if (v >= this.total) set.add(v); });
                 return Array.from(set).slice(0,4);
             },
-            clearCart() { if (confirm('تفريغ السلة بالكامل؟')) { this.cart = []; this.discount = 0; this.cash = 0; this.card = 0; this.deliveryFee = 0; this.driverId = ''; this.customerPhone = ''; this.customerId = null; this.customerName = ''; this.preview = null; this.error = ''; } },
+            clearCart() { if (confirm('تفريغ السلة بالكامل؟')) { this.cart = []; this.discount = 0; this.deliveryFee = 0; this.delivery = false; this.driverId=''; this.customerName=''; this.customerPhone=''; this.payMethod='cash'; this.cash = 0; this.card = 0; this.error = ''; } },
             bump(idx, delta) {
                 const l = this.cart[idx];
                 const next = Math.max(0.001, (Number(l.qty) || 1) + delta);
@@ -607,7 +647,17 @@
                 this.busy = true; this.error = '';
                 const lines = this.cart.map(l => l.box_sn ? { box_sn: l.box_sn } : { item_id: l.item_id, qty: Number(l.qty) });
                 const key = (crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + Math.random().toString(16).slice(2));
-                const payload = { discount: Number(this.discount)||0, cash: Number(this.cash)||0, card: Number(this.card)||0, delivery_fee: Number(this.deliveryFee)||0, customer_id: this.customerId, driver_id: this.driverId ? Number(this.driverId) : null };
+                const payload = {
+                    discount: Number(this.discount)||0,
+                    cash: Number(this.cash)||0,
+                    card: Number(this.card)||0,
+                    delivery_fee: Number(this.deliveryFee)||0,
+                    pay_method: this.payMethod,
+                    customer_name: this.customerName || null,
+                    customer_phone: this.customerPhone || null,
+                    driver_id: this.delivery ? (this.driverId || null) : null,
+                    delivery: !!this.delivery,
+                };
                 try {
                     const res = await fetch('{{ route('pos.sale') }}', {
                         method: 'POST',
@@ -622,13 +672,14 @@
                         change: data.sale.change,
                         subtotal: this.subtotal,
                         disc: payload.discount,
-                        deliveryFee: payload.delivery_fee,
+                        delivery_fee: payload.delivery_fee,
+                        pay_method: payload.pay_method,
                         cash: payload.cash,
                         card: payload.card,
                         at: new Date().toLocaleString('ar-EG'),
                         lines: this.cart.map(l => ({...l}))
                     };
-                    this.cart = []; this.discount = 0; this.cash = 0; this.card = 0; this.deliveryFee = 0; this.driverId = ''; this.customerPhone = ''; this.customerId = null; this.customerName = ''; this.preview = null; this.code = ''; this.searchResults = [];
+                    this.cart = []; this.discount = 0; this.deliveryFee = 0; this.delivery=false; this.driverId=''; this.customerName=''; this.customerPhone=''; this.payMethod='cash'; this.cash = 0; this.card = 0; this.code = ''; this.searchResults = [];
                     this.$nextTick(() => { window.print(); this.$refs.scanInput?.focus(); });
                 } catch (e) { this.error = 'تعذر الاتصال بالخادم'; }
                 finally { this.busy = false; }

@@ -3,7 +3,7 @@
 use App\Modules\Transfers\Http\Controllers\TransferController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'nav.access'])->group(function () {
     Route::get('/transfers', [TransferController::class, 'index'])
         ->middleware('perm:stock.view')
         ->name('transfers.index');

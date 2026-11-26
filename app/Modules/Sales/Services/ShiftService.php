@@ -13,46 +13,39 @@ use App\Modules\Sales\Models\ShiftExpense;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
-/**
- * Enhanced ShiftService: full shift lifecycle management.
- * Mirrors Nano City's ShiftService with create, close, expenses, transfers, carryover.
- */
 class ShiftService
 {
-    /**
-     * Create a new shift (open).
-     */
     public function create(array $data): Shift
     {
-        // Ensure no other open shift for this cashier
-        $existing = Shift::where('cashier', $data['cashier'])
-            ->where('status', 'open')
-            ->first();
-
+        $existing = Shift::where('cashier', $data['cashier'])->where('status', 'open')->first();
         if ($existing) {
-            throw ValidationException::withMessages([
-                'cashier' => 'هذا الكاشير لديه وردية مفتوحة بالفعل',
-            ]);
+            throw ValidationException::withMessages(['cashier' => 'هذا الكاشير لديه وردية مفتوحة بالفعل']);
         }
 
-        // Validate location is sellable
         $location = Location::where('id', $data['location_id'])
             ->where('active', true)
-            ->whereIn('type', ['dark', 'shop'])
+            ->whereIn('type', ['dark', 'shop', 'factory', 'section'])
             ->first();
-
         if (!$location) {
-            throw ValidationException::withMessages([
-                'location_id' => 'الفرع غير متاح للبيع',
-            ]);
+            throw ValidationException::withMessages(['location_id' => 'الموقع غير متاح']);
         }
 
-        $shift = Shift::create([
+        $previous = Shift::where('cashier', $data['cashier'])
+            ->where('status', 'closed')
+            ->orderByDesc('closed_at')
+            ->orderByDesc('id')
+            ->first();
+        $carry = round((float) ($previous?->carryover_to_next_shift ?? $previous?->expected_cash ?? 0), 2);
+        $opening = $previous
+            ? $carry
+            : round((float) ($data['opening_cash'] ?? 0), 2);
+
+        return Shift::create([
             'location_id' => $data['location_id'],
             'cashier' => $data['cashier'],
             'open_cashier' => $data['cashier'],
             'opened_at' => $data['opened_at'] ?? now(),
-            'opening_cash' => round((float) $data['opening_cash'], 2),
+            'opening_cash' => $opening,
             'status' => 'open',
         ]);
 
@@ -112,29 +105,18 @@ class ShiftService
             ?->update(['to_shift_id' => $shift->id, 'to_user_id' => $shift->cashier]);
     }
 
-    /**
-     * Open a shift (alias for create with auto-cashier).
-     */
     public function openShift(string $location, float $cash, string $userId): Shift
     {
-        return $this->create([
-            'location_id' => $location,
-            'cashier' => $userId,
-            'opening_cash' => $cash,
-        ]);
+        $existing = Shift::where('cashier', $userId)->where('status', 'open')->first();
+        if ($existing) return $existing;
+        return $this->create(['location_id' => $location, 'cashier' => $userId, 'opening_cash' => $cash]);
     }
 
-    /**
-     * Close a shift with full calculation.
-     */
-    public function closeShift(int $shiftId, float $countedCash, string $userId, ?string $notes = null): float
+    public function closeShift(int $shiftId, ?float $countedCash, string $userId, ?string $notes = null): float
     {
         return DB::transaction(function () use ($shiftId, $countedCash, $userId, $notes) {
             $shift = Shift::where('id', $shiftId)->where('status', 'open')->lockForUpdate()->first();
-
-            if (!$shift) {
-                throw new \RuntimeException('الوردية دي مش مفتوحة');
-            }
+            if (!$shift) throw new \RuntimeException('الوردية دي مش مفتوحة');
 
             if ($shift->cashier !== $userId) {
                 $actor = User::find($userId);
@@ -143,17 +125,10 @@ class ShiftService
                 }
             }
 
-            // One expected-cash formula for every close path (see
-            // calculateExpectedCash): opening + POS cash + online cash
-            // collections - cash return refunds - expenses - transfers.
-            $expected = $this->calculateExpectedCash($shift);
-            $expensesTotal = $this->expensesTotal($shift->id);
-            $transfersToManager = $this->transfersToManagerTotal($shift->id);
+            $totals = $this->shiftTotals($shift);
+            $expected = $totals['expected_cash'];
+            $carryover = round($expected, 2); // cumulative custody: not reset
 
-            // Carryover = actual ending cash (what remains in drawer)
-            $carryover = $countedCash;
-
-            // Create carryover transfer if > 0
             if ($carryover > 0) {
                 CashTransfer::updateOrCreate(
                     ['from_shift_id' => $shiftId, 'type' => 'to_next_shift'],
@@ -165,102 +140,68 @@ class ShiftService
                         'amount' => $carryover,
                         'status' => 'approved',
                         'approved_by' => $userId,
-                        'notes' => 'مبلغ مرحل للوردية التالية',
+                        'notes' => 'عهدة تراكمية مرحّلة للوردية التالية',
                     ]
                 );
             }
 
-            // Update shift
             $shift->update([
                 'status' => 'closed',
                 'open_cashier' => null,
                 'closed_by' => $userId,
                 'closed_at' => now(),
                 'logged_out_at' => now(),
-                'counted_cash' => $countedCash,
+                'counted_cash' => $countedCash !== null ? round($countedCash, 2) : null,
                 'expected_cash' => $expected,
-                'expenses_total' => $expensesTotal,
-                'sent_to_manager' => $transfersToManager,
+                'expenses_total' => $totals['shift_expenses_total'],
+                'sent_to_manager' => $totals['transfers_out'],
                 'carryover_to_next_shift' => $carryover,
                 'close_notes' => $notes,
             ]);
 
-            return round($countedCash - $expected, 2);
+            return 0.0;
         });
     }
 
-    /**
-     * Calculate expected cash for a shift — the single formula every close
-     * path uses, so the cashier button and the shifts screen can never
-     * disagree. The system calculates the cash from the orders; it never
-     * asks the user how much is in the drawer (that is only the counted
-     * cash entered at close time, compared against this number).
-     *
-     * expected = opening cash
-     *   + POS cash sales (paid_cash - change)
-     *   + cash collected on online orders (ShiftCollection method=cash;
-     *     instapay/card collections are report-only and do NOT count)
-     *   - cash refunds on returns approved against this shift
-     *   - expenses (shift expenses + general expenses charged to the shift)
-     *   - transfers to manager / safe
-     *
-     * Custody is cumulative across days: the counted cash becomes the
-     * carryover (see closeShift), and the next shift in the branch opens
-     * with it (see suggestedOpeningCash / consumeCarryover).
-     */
     public function calculateExpectedCash(Shift $shift): float
     {
-        $cashSales = (float) Sale::where('shift_id', $shift->id)
-            ->sum(DB::raw('paid_cash - `change`'));
-
-        $onlineCash = (float) ShiftCollection::where('shift_id', $shift->id)
-            ->where('method', 'cash')->sum('amount');
-
-        $cashRefunds = $this->cashRefundsTotal($shift->id);
-
-        return round(
-            (float) $shift->opening_cash + $cashSales + $onlineCash - $cashRefunds
-                - $this->expensesTotal($shift->id) - $this->transfersToManagerTotal($shift->id),
-            2
-        );
+        return $this->shiftTotals($shift)['expected_cash'];
     }
 
-    /** Cash refunded on returns approved against this shift. */
-    public function cashRefundsTotal(int $shiftId): float
+    public function shiftTotals(Shift $shift): array
     {
-        return (float) \App\Modules\Returns\Models\SalesReturn::where('shift_id', $shiftId)
-            ->where('status', 'approved')
-            ->where('refund_method', 'cash')
-            ->sum('refund_amount');
+        $salesQ = Sale::where('shift_id', $shift->id);
+        $cashSales = (float) (clone $salesQ)->sum(DB::raw('paid_cash - `change`'));
+        $electronicSales = (float) (clone $salesQ)->sum('paid_card');
+        $totalSales = (float) (clone $salesQ)->sum('total');
+        $discountTotal = (float) (clone $salesQ)->sum('discount');
+        $deliveryTotal = (float) (clone $salesQ)->sum('delivery_fee');
+        $ordersCount = (int) (clone $salesQ)->count();
+        $returnsCount = (int) DB::table('sales_returns')->whereIn('sale_id', (clone $salesQ)->select('id'))->where('status', 'approved')->count();
+        $returnsTotal = (float) DB::table('sales_returns')->whereIn('sale_id', (clone $salesQ)->select('id'))->where('status', 'approved')->sum('total');
+        $netSales = round($totalSales - $returnsTotal, 2);
+
+        $shiftExpenses = (float) ShiftExpense::where('shift_id', $shift->id)->whereIn('status', ['approved', 'pending'])->sum('amount');
+        $transfersOut = (float) CashTransfer::where('from_shift_id', $shift->id)->whereIn('type', ['to_manager', 'to_safe'])->whereIn('status', ['approved', 'pending'])->sum('amount');
+        $transfersIn = (float) CashTransfer::where('to_shift_id', $shift->id)->whereIn('status', ['approved', 'pending'])->sum('amount');
+        $expected = round((float) $shift->opening_cash + $cashSales - $shiftExpenses - $transfersOut + $transfersIn, 2);
+
+        $byMethod = [
+            'cash' => round((float) Sale::where('shift_id',$shift->id)->where('pay_method','cash')->sum('total'), 2),
+            'card' => round((float) Sale::where('shift_id',$shift->id)->where('pay_method','card')->sum('total'), 2),
+            'instapay' => round((float) Sale::where('shift_id',$shift->id)->where('pay_method','instapay')->sum('total'), 2),
+            'wallet' => round((float) Sale::where('shift_id',$shift->id)->where('pay_method','wallet')->sum('total'), 2),
+            'mixed' => round((float) Sale::where('shift_id',$shift->id)->where('pay_method','mixed')->sum('total'), 2),
+        ];
+
+        return compact('cashSales','electronicSales','totalSales','discountTotal','deliveryTotal','ordersCount','returnsCount','returnsTotal','netSales','expected') + [
+            'shift_expenses_total' => $shiftExpenses,
+            'transfers_out' => $transfersOut,
+            'by_method' => $byMethod,
+            'expected_cash' => $expected,
+        ];
     }
 
-    /** All expenses charged to the shift (both expense tables). */
-    public function expensesTotal(int $shiftId): float
-    {
-        $shiftExpenses = (float) ShiftExpense::where('shift_id', $shiftId)
-            ->whereIn('status', ['approved', 'pending'])
-            ->sum('amount');
-
-        $general = (float) DB::table('expenses')
-            ->where('shift_id', $shiftId)
-            ->where('status', '!=', 'rejected')
-            ->sum('amount');
-
-        return round($shiftExpenses + $general, 2);
-    }
-
-    /** Transfers from this shift to the manager or the safe. */
-    public function transfersToManagerTotal(int $shiftId): float
-    {
-        return (float) CashTransfer::where('from_shift_id', $shiftId)
-            ->whereIn('type', ['to_manager', 'to_safe'])
-            ->whereIn('status', ['approved', 'pending'])
-            ->sum('amount');
-    }
-
-    /**
-     * Record a shift expense.
-     */
     public function addExpense(Shift $shift, array $data): ShiftExpense
     {
         return ShiftExpense::create([
@@ -275,9 +216,6 @@ class ShiftService
         ]);
     }
 
-    /**
-     * Record a cash transfer.
-     */
     public function addTransfer(Shift $shift, array $data): CashTransfer
     {
         return CashTransfer::create([
@@ -294,50 +232,25 @@ class ShiftService
         ]);
     }
 
-    /**
-     * Get paginated shifts with filters.
-     */
     public function getPaginated(array $filters = [], int $perPage = 20)
     {
         $query = Shift::with(['cashierUser', 'location', 'closedBy'])->orderByDesc('id');
-
         if (!empty($filters['search'])) {
             $keyword = trim($filters['search']);
             $query->where(function ($q) use ($keyword) {
-                if (is_numeric($keyword)) {
-                    $q->orWhere('id', $keyword);
-                }
+                if (is_numeric($keyword)) $q->orWhere('id', $keyword);
                 $q->orWhereHas('cashierUser', fn ($u) => $u->where('name', 'like', "%{$keyword}%"));
                 $q->orWhereHas('location', fn ($l) => $l->where('name', 'like', "%{$keyword}%"));
             });
         }
-
-        if (!empty($filters['location_id'])) {
-            $query->where('location_id', $filters['location_id']);
-        }
-
-        if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
-        }
-
-        if (!empty($filters['cashier'])) {
-            $query->where('cashier', $filters['cashier']);
-        }
-
-        if (!empty($filters['date_from'])) {
-            $query->whereDate('opened_at', '>=', $filters['date_from']);
-        }
-
-        if (!empty($filters['date_to'])) {
-            $query->whereDate('opened_at', '<=', $filters['date_to']);
-        }
-
+        if (!empty($filters['location_id'])) $query->where('location_id', $filters['location_id']);
+        if (!empty($filters['status'])) $query->where('status', $filters['status']);
+        if (!empty($filters['cashier'])) $query->where('cashier', $filters['cashier']);
+        if (!empty($filters['date_from'])) $query->whereDate('opened_at', '>=', $filters['date_from']);
+        if (!empty($filters['date_to'])) $query->whereDate('opened_at', '<=', $filters['date_to']);
         return $query->paginate($perPage)->appends($filters);
     }
 
-    /**
-     * Get shift statistics.
-     */
     public function getStats(): array
     {
         return [

@@ -6,7 +6,7 @@ use App\Modules\Purchasing\Http\Controllers\SpecController;
 use App\Modules\Purchasing\Http\Controllers\SupplierController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'nav.access'])->group(function () {
     // Suppliers
     Route::get('/purchasing/suppliers', [SupplierController::class, 'index'])
         ->middleware('perm:stock.view')->name('purchasing.suppliers.index');

@@ -14,28 +14,9 @@ class SalesReturn extends Model
 
     public const STATUSES = ['pending', 'approved', 'rejected'];
 
-    /** Where the returned tray goes. One destination per return. */
-    public const DESTINATIONS = ['stock', 'waste', 'donated'];
-
-    public const DESTINATION_LABELS = [
-        'stock' => 'مخزون الفرع (إعادة بيع)',
-        'waste' => 'هالك',
-        'donated' => 'مخزن تبرعات',
-    ];
-
-    /** How the customer was refunded; 'none' = no money back (e.g. exchange). */
-    public const REFUND_METHODS = ['cash', 'card', 'none'];
-
-    public const REFUND_METHOD_LABELS = [
-        'cash' => 'كاش',
-        'card' => 'فيزا / محفظة',
-        'none' => 'بدون استرداد',
-    ];
-
     protected $fillable = [
-        'no', 'sale_id', 'shift_id', 'location_id', 'destination',
-        'refund_method', 'refund_amount', 'subtotal', 'total', 'status',
-        'reason', 'by', 'at', 'decided_by', 'decided_at',
+        'no', 'sale_id', 'location_id', 'subtotal', 'total', 'status', 'destination',
+        'destination_location_id', 'reason', 'by', 'at', 'decided_by', 'decided_at',
     ];
 
     protected function casts(): array
@@ -54,21 +35,5 @@ class SalesReturn extends Model
     public function sale(): BelongsTo
     {
         return $this->belongsTo(Sale::class);
-    }
-
-    /** The shift the refund was charged against (approver's open shift). */
-    public function shift(): BelongsTo
-    {
-        return $this->belongsTo(Shift::class);
-    }
-
-    public function destinationLabel(): string
-    {
-        return self::DESTINATION_LABELS[$this->destination] ?? (string) $this->destination;
-    }
-
-    public function refundMethodLabel(): string
-    {
-        return self::REFUND_METHOD_LABELS[$this->refund_method] ?? (string) $this->refund_method;
     }
 }

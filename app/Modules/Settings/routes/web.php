@@ -3,7 +3,7 @@
 use App\Modules\Settings\Http\Controllers\SettingController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'nav.access'])->group(function () {
     Route::get('/settings', [SettingController::class, 'index'])
         ->middleware('perm:settings.edit')->name('settings.index');
 

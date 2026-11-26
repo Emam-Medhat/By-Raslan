@@ -4,7 +4,7 @@ use App\Modules\Accounting\Http\Controllers\AccountController;
 use App\Modules\Accounting\Http\Controllers\ExpenseController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'active'])->group(function () {
+Route::middleware(['auth', 'active', 'nav.access'])->group(function () {
     Route::get('/accounts', [AccountController::class, 'index'])
         ->middleware('perm:acc.view')->name('accounts.index');
 

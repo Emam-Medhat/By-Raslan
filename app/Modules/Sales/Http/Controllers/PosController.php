@@ -10,6 +10,7 @@ use App\Modules\Sales\Models\Shift;
 use App\Modules\Sales\Services\PosService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -31,20 +32,15 @@ class PosController
             $openShift->setAttribute('cashier_name', $openShift->cashierUser?->name);
         }
 
-        $locations = Location::whereIn('type', ['dark', 'shop'])->orderBy('name')->get();
-        $drivers = $openShift
-            ? Driver::forLocation($openShift->location_id)->get()
-            : collect();
-
-        // Custody carried over from the previous shift in each branch, so
-        // the opening cash can be prefilled instead of typed from memory.
-        $suggestedOpening = [];
-        foreach ($locations as $location) {
-            $suggestedOpening[$location->id] = app(\App\Modules\Sales\Services\ShiftService::class)
-                ->suggestedOpeningCash($location->id);
+        $user = auth()->user();
+        $locQ = Location::whereIn('type', ['dark', 'shop'])->where('active', true)->orderBy('name');
+        if ($user && !$user->isOwner()) {
+            $ids = $user->accessibleLocationIds();
+            if (!empty($ids)) $locQ->whereIn('id', $ids);
         }
-
-        return view('pos.index', compact('openShift', 'locations', 'drivers', 'suggestedOpening'));
+        $locations = $locQ->get();
+        $drivers = \App\Models\User::where('active', true)->where('is_driver', true)->orderBy('name')->get(['id','name']);
+        return view('pos.index', compact('openShift', 'locations', 'drivers'));
     }
 
     public function open(Request $request): RedirectResponse
@@ -143,6 +139,12 @@ class PosController
             'discount' => ['nullable', 'numeric', 'min:0'],
             'cash' => ['nullable', 'numeric', 'min:0'],
             'card' => ['nullable', 'numeric', 'min:0'],
+            'delivery_fee' => ['nullable', 'numeric', 'min:0'],
+            'pay_method' => ['nullable', 'in:cash,card,instapay,wallet,mixed'],
+            'customer_name' => ['nullable', 'string', 'max:120'],
+            'customer_phone' => ['nullable', 'string', 'max:32'],
+            'driver_id' => ['nullable', 'exists:users,id'],
+            'delivery' => ['nullable', 'boolean'],
             'idempotency_key' => ['required', 'uuid'],
             'delivery_fee' => ['nullable', 'numeric', 'min:0'],
             'customer_id' => ['nullable', 'exists:customers,id'],
@@ -160,40 +162,47 @@ class PosController
                 auth()->id(),
                 [
                     'delivery_fee' => (float) ($data['delivery_fee'] ?? 0),
-                    'customer_id' => isset($data['customer_id']) ? (int) $data['customer_id'] : null,
-                    'driver_id' => isset($data['driver_id']) ? (int) $data['driver_id'] : null,
-                ],
+                    'pay_method' => $data['pay_method'] ?? null,
+                    'customer_name' => $data['customer_name'] ?? null,
+                    'customer_phone' => $data['customer_phone'] ?? null,
+                    'driver_id' => $data['driver_id'] ?? null,
+                    'delivery' => (bool) ($data['delivery'] ?? false),
+                    'order_source' => 'pos',
+                ]
             );
 
             return response()->json([
                 'ok' => true,
-                'sale' => ['no' => $sale->no, 'total' => $sale->total, 'change' => $sale->change],
+                'sale' => ['no' => $sale->no, 'total' => $sale->total, 'change' => $sale->change, 'id' => $sale->id],
             ]);
         } catch (\RuntimeException $e) {
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
         }
     }
 
-    public function close(Request $request): RedirectResponse
+    public function close(Request $request): Response|RedirectResponse
     {
         $data = $request->validate([
             'shift_id' => ['required', 'exists:shifts,id'],
-            'counted' => ['required', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
         try {
-            $this->pos->closeShift((int) $data['shift_id'], (float) $data['counted'], auth()->id(), $data['notes'] ?? null);
+            $this->pos->closeShift((int) $data['shift_id'], null, auth()->id(), $data['notes'] ?? null);
         } catch (\RuntimeException $e) {
             return back()->withErrors(['shift' => $e->getMessage()]);
         }
 
-        // Strict lock: terminate the session after closing.
+        $shift = Shift::with(['cashierUser', 'location', 'closedBy'])->findOrFail((int) $data['shift_id']);
+        $sales = Sale::with('cashierUser')->where('shift_id', $shift->id)->orderBy('id')->get();
+        $totals = app(\App\Modules\Sales\Services\ShiftService::class)->shiftTotals($shift);
+        $report = view('shifts.report', compact('shift', 'sales', 'totals'))->render();
+
         auth()->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('login')->with('status', 'تم إغلاق الشيفت بنجاح، وتم تسجيل خروجك من النظام.');
+        return response($report)->header('Content-Type', 'text/html; charset=UTF-8');
     }
 
     public function sales(): View
