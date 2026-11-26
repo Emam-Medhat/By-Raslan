@@ -58,6 +58,27 @@ class Shift extends Model
         return $this->hasMany(Sale::class);
     }
 
+    /** Collections recorded on this shift (online-order receiving etc.). */
+    public function collections(): HasMany
+    {
+        return $this->hasMany(ShiftCollection::class);
+    }
+
+    /**
+     * Cash custody added to this shift by cash collections only.
+     * InstaPay/card collections are recorded for reports and do NOT
+     * increase custody.
+     */
+    public function cashCollectionsTotal(): float
+    {
+        return (float) $this->collections()->where('method', 'cash')->sum('amount');
+    }
+
+    public function nonCashCollectionsTotal(): float
+    {
+        return (float) $this->collections()->whereIn('method', ['instapay', 'card'])->sum('amount');
+    }
+
     public function stockMoves(): HasMany
     {
         return $this->hasMany(StockMove::class, 'shift_id');

@@ -7,6 +7,8 @@ use App\Modules\Catalog\Models\ItemBarcode;
 use App\Modules\Catalog\Models\Price;
 use App\Modules\Inventory\Models\Box;
 use App\Modules\Inventory\Models\StockMove;
+use App\Modules\Orders\Models\Customer;
+use App\Modules\Orders\Models\Driver;
 use App\Modules\Sales\Models\Sale;
 use App\Modules\Sales\Models\SaleLine;
 use App\Modules\Sales\Models\Shift;
@@ -18,6 +20,10 @@ use Illuminate\Support\Facades\DB;
  */
 class PosService
 {
+    public function __construct(private readonly ShiftService $shifts)
+    {
+    }
+
     public function openShift(string $location, float $cash, string $userId): Shift
     {
         if ($cash < 0 || $cash > 9_999_999_999.99 || round($cash, 2) != $cash) {
@@ -38,7 +44,7 @@ class PosService
             return $existing;
         }
 
-        return Shift::create([
+        $shift = Shift::create([
             'location_id' => $location,
             'cashier' => $userId,
             'open_cashier' => $userId,
@@ -46,6 +52,12 @@ class PosService
             'opening_cash' => round($cash, 2),
             'status' => 'open',
         ]);
+
+        // Cumulative custody: opening with the carried-over amount links
+        // the previous shift's carryover transfer to this shift.
+        $this->shifts->consumeCarryover($shift);
+
+        return $shift;
     }
 
     /** @return array{item_id:int,item_name:string,unit:string,box_sn:int|null,qty:float,unit_price:float} */
@@ -179,10 +191,159 @@ class PosService
         return (float) StockMove::where('item_id', $itemId)->where('location_id', $location)->sum('qty');
     }
 
+    private function checkDiscount(?\App\Models\User $actor, float $discount): void
+    {
+        if ($discount <= 0) {
+            return;
+        }
+        if (! $actor || ! $actor->hasPermission('pos.discount')) {
+            throw new \RuntimeException('الخصم محتاج صلاحية');
+        }
+        $limit = $actor->permissionLimit('pos.discount');
+        if ($limit !== null && $discount > $limit) {
+            throw new \RuntimeException("الخصم ({$discount} ج) أكبر من حدك ({$limit} ج)");
+        }
+    }
+
+    /**
+     * Resolve the optional driver for a direct sale.
+     * Rule: a driver is required only when a delivery fee is charged
+     * (delivery requested); walk-in sales (fee = 0) may have no driver.
+     * The driver must be active and linked to the sale's branch.
+     *
+     * @return array{0:int|null,1:string|null} [driver_id, driver name]
+     */
+    private function resolveSaleDriver(?int $driverId, float $deliveryFee, string $locationId): array
+    {
+        if ($driverId !== null) {
+            $driver = Driver::where('id', $driverId)->where('active', true)->first();
+            if (! $driver || $driver->location_id !== $locationId) {
+                throw new \RuntimeException('الطيار مش مربوط بالفرع ده');
+            }
+
+            return [(int) $driver->id, $driver->name];
+        }
+
+        if ($deliveryFee > 0) {
+            throw new \RuntimeException('اختار الطيار عشان فيه رسوم توصيل');
+        }
+
+        return [null, null];
+    }
+
+    /**
+     * "تجهيز" (Prepare): read-only invoice preview for a direct sale.
+     * Validates the cart, discount, customer and driver exactly like
+     * sale() does, but writes nothing and changes no stock/box status.
+     * The cashier reviews the preview, then pays via sale().
+     *
+     * @param  list<array{box_sn?:int,item_id?:int,qty?:float}>  $lines
+     * @return array{lines:list<array{item_name:string,box_sn:int|null,qty:float,unit_price:float,total:float}>,subtotal:float,discount:float,delivery_fee:float,total:float,customer_name:string|null,driver_name:string|null}
+     */
+    public function prepare(int $shiftId, array $lines, float $discount, array $options, string $userId): array
+    {
+        $shift = Shift::where('id', $shiftId)->where('cashier', $userId)->where('status', 'open')->first();
+        if (! $shift) {
+            throw new \RuntimeException('افتح وردية الأول');
+        }
+        if ($lines === []) {
+            throw new \RuntimeException('الفاتورة فاضية');
+        }
+        if ($discount < 0 || round($discount, 2) != $discount) {
+            throw new \RuntimeException('راجع قيم الخصم والمدفوع');
+        }
+
+        $actor = \App\Models\User::find($userId);
+        $this->checkDiscount($actor, $discount);
+
+        $deliveryFee = round((float) ($options['delivery_fee'] ?? 0), 2);
+        if ($deliveryFee < 0) {
+            throw new \RuntimeException('رسوم التوصيل مش صحيحة');
+        }
+
+        $customer = null;
+        if (! empty($options['customer_id'])) {
+            $customer = Customer::find((int) $options['customer_id']);
+            if (! $customer) {
+                throw new \RuntimeException('العميل مش موجود');
+            }
+        }
+
+        [, $driverName] = $this->resolveSaleDriver(
+            isset($options['driver_id']) ? (int) $options['driver_id'] : null,
+            $deliveryFee,
+            $shift->location_id,
+        );
+
+        $previewLines = [];
+        $sub = 0.0;
+        $seen = [];
+        foreach ($lines as $line) {
+            if (isset($line['box_sn'])) {
+                $sn = (int) $line['box_sn'];
+                if (in_array($sn, $seen, true)) {
+                    throw new \RuntimeException("العلبة #{$sn} متكررة في الفاتورة");
+                }
+                $seen[] = $sn;
+                $box = Box::with('item')->where('sn', $sn)->first();
+                if (! $box || $box->status !== 'stock' || $box->location_id !== $shift->location_id) {
+                    throw new \RuntimeException("العلبة #{$sn} لم تعد متاحة للبيع");
+                }
+                if (! $box->item || ! $box->item->active) {
+                    throw new \RuntimeException('الصنف غير فعال');
+                }
+                $price = $this->price($box->item_id, $shift->location_id);
+                if ($price === null) {
+                    throw new \RuntimeException('مفيش سعر لصنف العلبة');
+                }
+                $qty = ($box->item->unit === 'قطعة' || $box->item->sold_by === 'piece') ? 1.0 : (float) $box->weight;
+                $lineTotal = round($qty * $price, 2);
+                $previewLines[] = ['item_name' => $box->item->name, 'box_sn' => $sn, 'qty' => $qty, 'unit_price' => $price, 'total' => $lineTotal];
+                $sub += $lineTotal;
+            } else {
+                $itemId = (int) ($line['item_id'] ?? 0);
+                $qty = (float) ($line['qty'] ?? 0);
+                if ($itemId <= 0 || $qty <= 0) {
+                    throw new \RuntimeException('الصنف أو الكمية غير صحيحة');
+                }
+                $item = Item::find($itemId);
+                if (! $item || ! $item->active) {
+                    throw new \RuntimeException('الصنف غير موجود أو غير فعال');
+                }
+                $price = $this->price($itemId, $shift->location_id);
+                if ($price === null) {
+                    throw new \RuntimeException('مفيش سعر لهذا الصنف في الفرع');
+                }
+                if ($this->available($itemId, $shift->location_id) < $qty) {
+                    throw new \RuntimeException('المخزون غير كافٍ لهذا الصنف');
+                }
+                $lineTotal = round($qty * $price, 2);
+                $previewLines[] = ['item_name' => $item->name, 'box_sn' => null, 'qty' => $qty, 'unit_price' => $price, 'total' => $lineTotal];
+                $sub += $lineTotal;
+            }
+        }
+
+        $total = round($sub - $discount + $deliveryFee, 2);
+        if ($total < 0) {
+            throw new \RuntimeException('الخصم أكبر من قيمة الفاتورة');
+        }
+
+        return [
+            'lines' => $previewLines,
+            'subtotal' => round($sub, 2),
+            'discount' => round($discount, 2),
+            'delivery_fee' => $deliveryFee,
+            'total' => $total,
+            'customer_name' => $customer?->name,
+            'driver_name' => $driverName,
+        ];
+    }
+
     /**
      * @param  list<array{box_sn?:int,item_id?:int,qty?:float}>  $lines
+     * @param  array{customer_id?:int,delivery_fee?:float,driver_id?:int}  $options
      */
-    public function sale(int $shiftId, array $lines, float $discount, float $cash, float $card, string $idempotencyKey, string $userId): Sale
+    public function sale(int $shiftId, array $lines, float $discount, float $cash, float $card, string $idempotencyKey, string $userId, array $options = []): Sale
     {
         foreach (['discount' => $discount, 'cash' => $cash, 'card' => $card] as $name => $value) {
             if (! is_finite($value) || $value < 0 || $value > 9_999_999_999.99 || round($value, 2) != $value) {
@@ -190,15 +351,25 @@ class PosService
             }
         }
 
+        $deliveryFee = round((float) ($options['delivery_fee'] ?? 0), 2);
+        if ($deliveryFee < 0 || $deliveryFee > 9_999_999_999.99) {
+            throw new \RuntimeException('رسوم التوصيل مش صحيحة');
+        }
+        $customerId = ! empty($options['customer_id']) ? (int) $options['customer_id'] : null;
+        $driverIdOpt = isset($options['driver_id']) && $options['driver_id'] !== '' ? (int) $options['driver_id'] : null;
+
         $payload = [
             'shift' => $shiftId,
             'lines' => $lines,
             'discount' => round($discount, 2),
             'cash' => round($cash, 2),
             'card' => round($card, 2),
+            'delivery_fee' => $deliveryFee,
+            'customer_id' => $customerId,
+            'driver_id' => $driverIdOpt,
         ];
 
-        return DB::transaction(function () use ($shiftId, $lines, $discount, $cash, $card, $idempotencyKey, $userId, $payload) {
+        return DB::transaction(function () use ($shiftId, $lines, $discount, $cash, $card, $idempotencyKey, $userId, $payload, $deliveryFee, $customerId, $driverIdOpt) {
             $shift = Shift::where('id', $shiftId)
                 ->where('cashier', $userId)
                 ->where('status', 'open')
@@ -235,16 +406,17 @@ class PosService
                 throw new \RuntimeException('سجّل دخول بحساب فعال');
             }
 
-            if ($discount > 0) {
-                $limit = $actor->permissionLimit('pos.discount');
-                $canDiscount = $actor->hasPermission('pos.discount');
-                if (! $canDiscount) {
-                    throw new \RuntimeException('الخصم محتاج صلاحية');
-                }
-                if ($limit !== null && $discount > $limit) {
-                    throw new \RuntimeException("الخصم ({$discount} ج) أكبر من حدك ({$limit} ج)");
+            $this->checkDiscount($actor, $discount);
+
+            $customer = null;
+            if ($customerId !== null) {
+                $customer = Customer::find($customerId);
+                if (! $customer) {
+                    throw new \RuntimeException('العميل مش موجود');
                 }
             }
+
+            [$resolvedDriverId] = $this->resolveSaleDriver($driverIdOpt, $deliveryFee, $shift->location_id);
 
             $sub = 0.0;
             $index = 0;
@@ -315,7 +487,7 @@ class PosService
                 }
             }
 
-            $total = round($sub - $discount, 2);
+            $total = round($sub - $discount + $deliveryFee, 2);
             if ($total < 0) {
                 throw new \RuntimeException('الخصم أكبر من قيمة الفاتورة');
             }
@@ -337,6 +509,7 @@ class PosService
                 'at' => now(),
                 'subtotal' => round($sub, 2),
                 'discount' => round($discount, 2),
+                'delivery_fee' => $deliveryFee,
                 'total' => $total,
                 'paid_cash' => round($cash, 2),
                 'paid_card' => round($card, 2),
@@ -344,6 +517,8 @@ class PosService
                 'idempotency_key' => $idempotencyKey,
                 'request_payload' => $payload,
                 'discount_by' => $discount > 0 ? $userId : null,
+                'customer_id' => $customer?->id,
+                'driver_id' => $resolvedDriverId,
             ]);
 
             foreach ($saleLines as &$sl) {
@@ -365,38 +540,14 @@ class PosService
         });
     }
 
+    /**
+     * Close a shift. There is exactly one close path: this delegates to
+     * ShiftService::closeShift() (the same method the shifts screen uses),
+     * so the expected cash, the carryover transfer and the counted-vs-
+     * expected difference can never disagree between the two buttons.
+     */
     public function closeShift(int $shiftId, float $counted, string $userId, ?string $notes = null): float
     {
-        return DB::transaction(function () use ($shiftId, $counted, $userId, $notes) {
-            $shift = Shift::where('id', $shiftId)->where('status', 'open')->lockForUpdate()->first();
-
-            if (! $shift) {
-                throw new \RuntimeException('الوردية دي مش مفتوحة');
-            }
-
-            if ($shift->cashier !== $userId) {
-                $actor = \App\Models\User::find($userId);
-                if (! $actor || ! $actor->hasPermission('pos.shift')) {
-                    throw new \RuntimeException('مش مسموح بإغلاق وردية غيرك');
-                }
-            }
-
-            $salesCash = (float) Sale::where('shift_id', $shiftId)->sum(DB::raw('paid_cash - `change`'));
-            $shiftExpenses = (float) DB::table('expenses')->where('shift_id', $shiftId)->where('status', '!=', 'rejected')->sum('amount');
-            $expected = round((float) $shift->opening_cash + $salesCash - $shiftExpenses, 2);
-
-            $shift->update([
-                'status' => 'closed',
-                'open_cashier' => null,
-                'closed_by' => $userId,
-                'closed_at' => now(),
-                'logged_out_at' => now(),
-                'counted_cash' => $counted,
-                'expected_cash' => $expected,
-                'close_notes' => $notes,
-            ]);
-
-            return round($counted - $expected, 2);
-        });
+        return $this->shifts->closeShift($shiftId, $counted, $userId, $notes);
     }
 }

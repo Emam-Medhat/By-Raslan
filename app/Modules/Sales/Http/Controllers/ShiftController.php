@@ -98,14 +98,21 @@ class ShiftController
         $shiftExpensesTotal = (float) $shiftExpenses->sum('amount');
         $expensesTotal = (float) $expenses->sum('amount');
         $transfersTotal = (float) $cashTransfers->sum('amount');
-        $netCash = $cashSales - $change - $shiftExpensesTotal - $transfersTotal;
-        $expected = round((float) $shift->opening_cash + $netCash, 2);
+        // One formula for the expected cash (see ShiftService): opening +
+        // POS cash + online cash collections - cash return refunds -
+        // expenses - transfers to manager/safe.
+        $expected = $this->shifts->calculateExpectedCash($shift);
+        $netCash = round($expected - (float) $shift->opening_cash, 2);
+        $onlineCash = (float) $shift->cashCollectionsTotal();
+        $onlineNonCash = (float) $shift->nonCashCollectionsTotal();
+        $cashRefunds = $this->shifts->cashRefundsTotal($shift->id);
         $difference = $shift->counted_cash !== null ? round((float) $shift->counted_cash - $expected, 2) : null;
 
         return view('shifts.show', compact(
             'shift', 'sales', 'shiftExpenses', 'cashTransfers', 'stockMoves', 'expenses',
             'cashSales', 'cardSales', 'change', 'shiftExpensesTotal', 'expensesTotal',
-            'transfersTotal', 'expected', 'difference'
+            'transfersTotal', 'expected', 'difference', 'netCash',
+            'onlineCash', 'onlineNonCash', 'cashRefunds'
         ));
     }
 
@@ -178,8 +185,8 @@ class ShiftController
         $expensesTotal = (float) $expenses->sum('amount');
         $shiftExpensesTotal = (float) $shiftExpenses->sum('amount');
         $transfersTotal = (float) $cashTransfers->sum('amount');
-        $netCash = $cashSales - $change - $shiftExpensesTotal - $transfersTotal;
-        $expected = round((float) $shift->opening_cash + $netCash, 2);
+        // Same single expected-cash formula as the close path.
+        $expected = $this->shifts->calculateExpectedCash($shift);
 
         return view('shifts.movements', compact(
             'shift', 'sales', 'stockMoves', 'expenses', 'shiftExpenses', 'cashTransfers',

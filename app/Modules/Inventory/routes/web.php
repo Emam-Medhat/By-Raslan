@@ -33,6 +33,10 @@ Route::middleware(['auth', 'active'])->group(function () {
         ->middleware('perm:stock.view')
         ->name('boxes.index');
 
+    Route::get('/boxes/{box}/sticker', [BoxController::class, 'sticker'])
+        ->middleware('perm:stock.view')
+        ->name('boxes.sticker');
+
     // Stock Counts (Stocktaking)
     Route::get('/stock-counts', [StockCountController::class, 'index'])
         ->middleware('perm:stock.view')

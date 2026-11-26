@@ -169,6 +169,8 @@
             @csrf
             <div class="bg-slate-50 rounded-lg p-3 text-sm">
                 <div class="flex justify-between"><span class="text-slate-500">المتوقع</span><span class="font-bold">{{ number_format($expected, 2) }} ج</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">تحصيل أونلاين كاش</span><span class="font-bold">{{ number_format($onlineCash ?? 0, 2) }} ج</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">استرداد مرتجعات كاش</span><span class="font-bold text-red-600">− {{ number_format($cashRefunds ?? 0, 2) }} ج</span></div>
             </div>
             <p class="text-sm text-slate-500">أدخل النقد المعدود الفعلي في نهاية الشيفت.</p>
             <div>

@@ -10,6 +10,8 @@
         <div><div class="text-xs text-slate-500">الحالة</div><div class="font-semibold">{{ $order->status }}</div></div>
         <div><div class="text-xs text-slate-500">الفرع</div><div class="font-semibold">{{ $order->location_id }}</div></div>
         <div><div class="text-xs text-slate-500">الإجمالي</div><div class="font-semibold">{{ $order->total ?? $order->est_total }}</div></div>
+        <div><div class="text-xs text-slate-500">الطيار</div><div class="font-semibold">{{ $order->driverName() ?: '—' }}</div></div>
+        <div><div class="text-xs text-slate-500">طريقة التحصيل</div><div class="font-semibold">{{ $order->collection_method === 'cash' ? 'كاش' : ($order->collection_method === 'instapay' ? 'إنستا باي' : ($order->collection_method === 'card' ? 'فيزا / محفظة' : '—')) }}</div></div>
     </div>
 
     @can('orders.handle')
@@ -23,7 +25,16 @@
                             <option value="{{ $s }}">{{ $s }}</option>
                         @endforeach
                     </select>
-                    <input name="driver" placeholder="اسم الطيار (للخروج)" class="w-full rounded border border-slate-300 px-2 py-1">
+                    <select name="driver_id" class="w-full rounded border border-slate-300 px-2 py-1">
+                        <option value="">— اختار الطيار (للخروج) —</option>
+                        @foreach ($drivers as $driver)
+                            <option value="{{ $driver->id }}" @selected($order->driver_id == $driver->id)>{{ $driver->name }}</option>
+                        @endforeach
+                    </select>
+                    <input name="driver" placeholder="أو اكتب اسم طيار (قديم — لو مفيش في القائمة)" class="w-full rounded border border-slate-300 px-2 py-1">
+                    @if ($drivers->isEmpty())
+                        <p class="text-xs text-amber-600">لا يوجد طيارين مربوطين بالفرع ده — أضف طيار من صفحة الطيارين.</p>
+                    @endif
                     <button class="ds-btn ds-btn-primary rounded px-3 py-1 text-sm">تحديث</button>
                 </form>
                 @can('orders.cancel')
@@ -51,11 +62,26 @@
             </div>
 
             <div>
-                <h3 class="font-bold mb-2">تسليم وتحصيل</h3>
-                <form method="POST" action="{{ route('orders.deliver', $order) }}">
+                <h3 class="font-bold mb-2">استلام وتحصيل (الشاشة الرابعة)</h3>
+                <p class="text-xs text-slate-500 mb-2">الطلب لازم يكون خرج مع الطيار. الكاش بيتسجل عهدة على اللي استلم في ورديته، والإنستا باي / الفيزا بتتسجل في التقارير بس.</p>
+                <form method="POST" action="{{ route('orders.receive', $order) }}" class="space-y-2">
                     @csrf
-                    <button class="w-full ds-btn ds-btn-danger bg-red-600 text-white border-red-600 hover:bg-red-700 rounded px-3 py-2 font-bold">تسليم</button>
+                    <select name="collection_method" class="w-full rounded border border-slate-300 px-2 py-1">
+                        <option value="cash">كاش</option>
+                        <option value="instapay">إنستا باي</option>
+                        <option value="card">فيزا / محفظة</option>
+                    </select>
+                    <input name="amount" type="number" step="0.01" min="0" value="{{ $order->total ?? $order->est_total }}" class="w-full rounded border border-slate-300 px-2 py-1" placeholder="المبلغ — لازم يساوي الإجمالي">
+                    <button class="w-full ds-btn ds-btn-danger bg-red-600 text-white border-red-600 hover:bg-red-700 rounded px-3 py-2 font-bold">تسليم وتحصيل</button>
                 </form>
+                @if ($collections->isNotEmpty())
+                    <div class="mt-3 text-xs space-y-1">
+                        <div class="font-bold text-sm">التحصيلات المسجلة</div>
+                        @foreach ($collections as $c)
+                            <div>{{ $c->method === 'cash' ? 'كاش' : ($c->method === 'instapay' ? 'إنستا باي' : 'فيزا / محفظة') }} — {{ $c->amount }} ج — {{ $c->user?->name }} — {{ $c->created_at }}</div>
+                        @endforeach
+                    </div>
+                @endif
             </div>
         </div>
     @endcan

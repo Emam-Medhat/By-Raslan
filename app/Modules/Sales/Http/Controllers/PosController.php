@@ -3,6 +3,8 @@
 namespace App\Modules\Sales\Http\Controllers;
 
 use App\Modules\Organization\Models\Location;
+use App\Modules\Orders\Models\Customer;
+use App\Modules\Orders\Models\Driver;
 use App\Modules\Sales\Models\Sale;
 use App\Modules\Sales\Models\Shift;
 use App\Modules\Sales\Services\PosService;
@@ -30,8 +32,19 @@ class PosController
         }
 
         $locations = Location::whereIn('type', ['dark', 'shop'])->orderBy('name')->get();
+        $drivers = $openShift
+            ? Driver::forLocation($openShift->location_id)->get()
+            : collect();
 
-        return view('pos.index', compact('openShift', 'locations'));
+        // Custody carried over from the previous shift in each branch, so
+        // the opening cash can be prefilled instead of typed from memory.
+        $suggestedOpening = [];
+        foreach ($locations as $location) {
+            $suggestedOpening[$location->id] = app(\App\Modules\Sales\Services\ShiftService::class)
+                ->suggestedOpeningCash($location->id);
+        }
+
+        return view('pos.index', compact('openShift', 'locations', 'drivers', 'suggestedOpening'));
     }
 
     public function open(Request $request): RedirectResponse
@@ -70,6 +83,58 @@ class PosController
         return response()->json($this->pos->search($data['location_id'], $data['q'] ?? ''));
     }
 
+    /** Customer lookup for the POS by phone (optional customer on a direct sale). */
+    public function customer(Request $request): JsonResponse
+    {
+        $data = $request->validate(['phone' => ['required', 'string', 'max:20']]);
+        $phone = preg_replace('/\D+/', '', $data['phone']);
+        $customer = Customer::where('phone', $phone)->first();
+
+        if (! $customer) {
+            return response()->json(['ok' => false]);
+        }
+
+        return response()->json(['ok' => true, 'customer' => [
+            'id' => $customer->id, 'name' => $customer->name,
+            'phone' => $customer->phone, 'address' => $customer->address, 'area' => $customer->area,
+        ]]);
+    }
+
+    /**
+     * "تجهيز" (Prepare): read-only invoice preview — trays, weights,
+     * prices, discount, delivery fee and total — before payment.
+     * Writes nothing; the cashier then pays via sale().
+     */
+    public function prepare(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'shift_id' => ['required', 'exists:shifts,id'],
+            'lines' => ['required', 'array'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
+            'delivery_fee' => ['nullable', 'numeric', 'min:0'],
+            'customer_id' => ['nullable', 'exists:customers,id'],
+            'driver_id' => ['nullable', 'exists:drivers,id'],
+        ]);
+
+        try {
+            $preview = $this->pos->prepare(
+                (int) $data['shift_id'],
+                $data['lines'],
+                (float) ($data['discount'] ?? 0),
+                [
+                    'delivery_fee' => (float) ($data['delivery_fee'] ?? 0),
+                    'customer_id' => isset($data['customer_id']) ? (int) $data['customer_id'] : null,
+                    'driver_id' => isset($data['driver_id']) ? (int) $data['driver_id'] : null,
+                ],
+                auth()->id(),
+            );
+
+            return response()->json(['ok' => true, 'preview' => $preview]);
+        } catch (\RuntimeException $e) {
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
+        }
+    }
+
     public function sale(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -79,6 +144,9 @@ class PosController
             'cash' => ['nullable', 'numeric', 'min:0'],
             'card' => ['nullable', 'numeric', 'min:0'],
             'idempotency_key' => ['required', 'uuid'],
+            'delivery_fee' => ['nullable', 'numeric', 'min:0'],
+            'customer_id' => ['nullable', 'exists:customers,id'],
+            'driver_id' => ['nullable', 'exists:drivers,id'],
         ]);
 
         try {
@@ -90,6 +158,11 @@ class PosController
                 (float) ($data['card'] ?? 0),
                 $data['idempotency_key'],
                 auth()->id(),
+                [
+                    'delivery_fee' => (float) ($data['delivery_fee'] ?? 0),
+                    'customer_id' => isset($data['customer_id']) ? (int) $data['customer_id'] : null,
+                    'driver_id' => isset($data['driver_id']) ? (int) $data['driver_id'] : null,
+                ],
             );
 
             return response()->json([

@@ -24,6 +24,8 @@ class ShiftReportService
             ->leftJoin('locations as loc', 'loc.id', '=', 'sh.location_id')
             ->leftJoin('users as u', 'u.id', '=', 'sh.cashier')
             ->leftJoin(DB::raw('(select shift_id, count(*) invoice_count, coalesce(sum(subtotal),0) sales_subtotal, coalesce(sum(discount),0) sales_discount, coalesce(sum(total),0) sales_total, coalesce(sum(paid_cash-`change`),0) cash_net, coalesce(sum(paid_card),0) card_total from sales group by shift_id) s'), 's.shift_id', '=', 'sh.id')
+            ->leftJoin(DB::raw("(select shift_id, coalesce(sum(case when method='cash' then amount else 0 end),0) online_cash, coalesce(sum(case when method<>'cash' then amount else 0 end),0) online_noncash from shift_collections group by shift_id) c"), 'c.shift_id', '=', 'sh.id')
+            ->leftJoin(DB::raw("(select shift_id, count(*) returns_count, coalesce(sum(total),0) returns_total, coalesce(sum(case when refund_method='cash' then refund_amount else 0 end),0) returns_cash, coalesce(sum(case when refund_method='card' then refund_amount else 0 end),0) returns_card from sales_returns where status='approved' group by shift_id) r"), 'r.shift_id', '=', 'sh.id')
             ->leftJoin(DB::raw("(select shift_id, coalesce(sum(amount),0) shift_expenses from expenses where paid_from='shift' and status<>'rejected' group by shift_id) e"), 'e.shift_id', '=', 'sh.id')
             ->whereDate('sh.opened_at', '>=', $from)
             ->whereDate('sh.opened_at', '<=', $to)
@@ -38,7 +40,7 @@ class ShiftReportService
                     $w->orWhere('u.name', 'like', "%{$search}%");
                 });
             })
-            ->selectRaw('sh.*, loc.name as location_name, u.name as cashier_name, coalesce(s.invoice_count,0) invoice_count, coalesce(s.sales_subtotal,0) sales_subtotal, coalesce(s.sales_discount,0) sales_discount, coalesce(s.sales_total,0) sales_total, coalesce(s.cash_net,0) cash_net, coalesce(s.card_total,0) card_total, coalesce(e.shift_expenses,0) shift_expenses, case when sh.status="closed" and sh.counted_cash is not null and sh.expected_cash is not null then sh.counted_cash-sh.expected_cash else null end as difference');
+            ->selectRaw('sh.*, loc.name as location_name, u.name as cashier_name, coalesce(s.invoice_count,0) invoice_count, coalesce(s.sales_subtotal,0) sales_subtotal, coalesce(s.sales_discount,0) sales_discount, coalesce(s.sales_total,0) sales_total, coalesce(s.cash_net,0) cash_net, coalesce(s.card_total,0) card_total, coalesce(c.online_cash,0) online_cash, coalesce(c.online_noncash,0) online_noncash, coalesce(r.returns_count,0) returns_count, coalesce(r.returns_total,0) returns_total, coalesce(r.returns_cash,0) returns_cash, coalesce(r.returns_card,0) returns_card, coalesce(e.shift_expenses,0) shift_expenses, case when sh.status="closed" and sh.counted_cash is not null and sh.expected_cash is not null then sh.counted_cash-sh.expected_cash else null end as difference');
 
         $rows = $q->get();
         $rows = $rows->filter(function ($r) use ($reconcile) {
@@ -69,6 +71,12 @@ class ShiftReportService
             'sales_total' => round((float) $rows->sum('sales_total'), 2),
             'cash_net' => round((float) $rows->sum('cash_net'), 2),
             'card_total' => round((float) $rows->sum('card_total'), 2),
+            'online_cash' => round((float) $rows->sum('online_cash'), 2),
+            'online_noncash' => round((float) $rows->sum('online_noncash'), 2),
+            'returns_count' => (int) $rows->sum('returns_count'),
+            'returns_total' => round((float) $rows->sum('returns_total'), 2),
+            'returns_cash' => round((float) $rows->sum('returns_cash'), 2),
+            'returns_card' => round((float) $rows->sum('returns_card'), 2),
             'shift_expenses' => round((float) $rows->sum('shift_expenses'), 2),
             'shortage_total' => round((float) $rows->filter(fn ($r) => (float) ($r->difference ?? 0) < 0)->sum(fn ($r) => -((float) $r->difference)), 2),
             'overage_total' => round((float) $rows->filter(fn ($r) => (float) ($r->difference ?? 0) > 0)->sum('difference'), 2),

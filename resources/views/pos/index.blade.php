@@ -31,9 +31,10 @@
                     <div>
                         <label class="ds-label">رصيد بداية الوردية</label>
                         <div class="relative">
-                            <input name="opening_cash" type="number" step="0.01" min="0" value="0" class="ds-input h-12 pr-4 pl-14 text-[15px] font-semibold" placeholder="0.00">
+                            <input name="opening_cash" id="opening_cash" type="number" step="0.01" min="0" value="{{ $suggestedOpening[$locations->first()?->id] ?? 0 }}" class="ds-input h-12 pr-4 pl-14 text-[15px] font-semibold" placeholder="0.00">
                             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">ج.م</span>
                         </div>
+                        <p id="carryover_hint" class="mt-1 text-xs text-slate-500"></p>
                     </div>
                     <button class="ds-btn ds-btn-primary w-full h-12 text-base">
                         <x-icon name="unlock-keyhole" size="16" class="ml-1" /> فتح الوردية
@@ -227,6 +228,36 @@
                                 </div>
                             </div>
 
+                            <div>
+                                <label class="ds-label">العميل (اختياري — بحث برقم الموبايل)</label>
+                                <div class="flex gap-2">
+                                    <input x-model="customerPhone" type="text" class="ds-input h-11 flex-1" placeholder="01xxxxxxxxx" dir="ltr">
+                                    <button type="button" @click="findCustomer()" class="ds-btn ds-btn-secondary px-3 h-11">بحث</button>
+                                </div>
+                                <div x-show="customerName" class="mt-1 text-xs font-semibold text-emerald-600" x-text="'العميل: ' + customerName"></div>
+                            </div>
+
+                            <div>
+                                <label class="ds-label">رسوم التوصيل (0 = بيع مباشر بدون توصيل)</label>
+                                <div class="relative">
+                                    <input x-model.number="deliveryFee" type="number" step="0.01" min="0" class="ds-input h-11 pl-14 font-semibold num" placeholder="0.00">
+                                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">ج.م</span>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="ds-label">الطيار (إجباري لو فيه رسوم توصيل)</label>
+                                <select x-model="driverId" class="ds-input h-11">
+                                    <option value="">— بدون طيار —</option>
+                                    @foreach ($drivers as $driver)
+                                        <option value="{{ $driver->id }}">{{ $driver->name }}</option>
+                                    @endforeach
+                                </select>
+                                @if ($drivers->isEmpty())
+                                    <p class="mt-1 text-[11px] text-amber-600">لا يوجد طيارين مربوطين بالفرع ده — أضف طيار من صفحة الطيارين.</p>
+                                @endif
+                            </div>
+
                             <div class="border-t border-slate-100 pt-4 space-y-3">
                                 <div>
                                     <label class="ds-label">نقدي</label>
@@ -267,18 +298,28 @@
                                 </div>
                             </div>
 
-                            <button @click="checkout()"
-                                    :disabled="busy || cart.length === 0"
-                                    class="ds-btn ds-btn-accent w-full h-14 text-base shadow-lg shadow-accent-500/20 disabled:shadow-none">
-                                <span x-show="!busy" class="flex items-center gap-2">
-                                    <x-icon name="circle-check" size="16" />
-                                    <span>إتمام البيع</span>
-                                    <span class="num" x-text="total.toFixed(2)"></span>
-                                    <span>ج.م</span>
-                                </span>
-                                <span x-show="busy" class="flex items-center gap-2"><x-icon name="spin" size="16" /> جارٍ الحفظ...</span>
-                            </button>
-                            <p class="text-center text-[11px] text-slate-400">Enter لإضافة الكود · سيتم طباعة الإيصال بعد الحفظ</p>
+                            <div class="flex gap-2">
+                                <button @click="prepare()"
+                                        :disabled="busy || cart.length === 0"
+                                        class="ds-btn ds-btn-secondary flex-1 h-14 text-base">
+                                    <span class="flex items-center gap-2 justify-center">
+                                        <x-icon name="receipt-text" size="16" />
+                                        <span>تجهيز</span>
+                                    </span>
+                                </button>
+                                <button @click="checkout()"
+                                        :disabled="busy || cart.length === 0"
+                                        class="ds-btn ds-btn-accent flex-1 h-14 text-base shadow-lg shadow-accent-500/20 disabled:shadow-none">
+                                    <span x-show="!busy" class="flex items-center gap-2 justify-center">
+                                        <x-icon name="circle-check" size="16" />
+                                        <span>إتمام البيع</span>
+                                        <span class="num" x-text="total.toFixed(2)"></span>
+                                        <span>ج.م</span>
+                                    </span>
+                                    <span x-show="busy" class="flex items-center gap-2"><x-icon name="spin" size="16" /> جارٍ الحفظ...</span>
+                                </button>
+                            </div>
+                            <p class="text-center text-[11px] text-slate-400">تجهيز بيعرض الفاتورة للمراجعة قبل الدفع · Enter لإضافة الكود · سيتم طباعة الإيصال بعد الحفظ</p>
                         </div>
                     </div>
 
@@ -321,12 +362,47 @@
                 <hr style="border:0; border-top:1px dashed #000; margin:4px 0;">
                 <div style="display:flex; justify-content:space-between;"><span>المجموع</span><span x-text="Number(rec?.subtotal||0).toFixed(2)"></span></div>
                 <div x-show="(rec?.disc||0) > 0" style="display:flex; justify-content:space-between;"><span>خصم</span><span x-text="'-' + Number(rec?.disc||0).toFixed(2)"></span></div>
+                <div x-show="(rec?.deliveryFee||0) > 0" style="display:flex; justify-content:space-between;"><span>رسوم توصيل</span><span x-text="Number(rec?.deliveryFee||0).toFixed(2)"></span></div>
                 <div style="display:flex; justify-content:space-between; font-weight:800; font-size:11pt; margin:2px 0;"><span>الإجمالي</span><span x-text="Number(rec?.total||0).toFixed(2)"></span></div>
                 <div x-show="(rec?.cash||0) > 0" style="display:flex; justify-content:space-between;"><span>نقدي</span><span x-text="Number(rec?.cash||0).toFixed(2)"></span></div>
                 <div x-show="(rec?.card||0) > 0" style="display:flex; justify-content:space-between;"><span>فيزا</span><span x-text="Number(rec?.card||0).toFixed(2)"></span></div>
                 <div x-show="(rec?.change||0) > 0" style="display:flex; justify-content:space-between;"><span>الباقي</span><span x-text="Number(rec?.change||0).toFixed(2)"></span></div>
                 <hr style="border:0; border-top:1px dashed #000; margin:4px 0;">
                 <div style="text-align:center; font-size:8pt;">شكرًا لزيارتك — <span x-text="shift.cashier_name"></span></div>
+            </div>
+
+            {{-- Prepare preview modal --}}
+            <div x-show="previewModal" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center p-4" aria-modal="true">
+                <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" @click="previewModal = false"></div>
+                <div class="relative w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+                    <div class="flex items-center justify-between px-5 py-4 bg-gradient-to-l from-primary-800 to-primary-700 text-white">
+                        <h3 class="font-extrabold">معاينة الفاتورة — تجهيز</h3>
+                        <button @click="previewModal = false" class="text-white/80 hover:text-white">✕</button>
+                    </div>
+                    <div class="p-5 space-y-3" x-show="preview">
+                        <template x-for="(l, i) in (preview?.lines||[])" :key="'p'+i">
+                            <div class="flex items-center justify-between gap-3 text-sm border-b border-slate-100 pb-2">
+                                <div>
+                                    <div class="font-semibold" x-text="l.item_name"></div>
+                                    <div class="text-[11px] text-slate-400"><span x-text="fmtQty(l.qty)"></span> × <span x-text="Number(l.unit_price).toFixed(2)"></span><span x-show="l.box_sn" x-text="' #' + l.box_sn"></span></div>
+                                </div>
+                                <div class="font-extrabold num" x-text="Number(l.total).toFixed(2)"></div>
+                            </div>
+                        </template>
+                        <div class="space-y-1 text-sm">
+                            <div class="flex justify-between"><span class="text-slate-500">المجموع الفرعي</span><span class="font-bold num" x-text="Number(preview?.subtotal||0).toFixed(2) + ' ج.م'"></span></div>
+                            <div class="flex justify-between" x-show="(preview?.discount||0) > 0"><span class="text-slate-500">خصم</span><span class="font-bold num" x-text="'-' + Number(preview?.discount||0).toFixed(2) + ' ج.م'"></span></div>
+                            <div class="flex justify-between" x-show="(preview?.delivery_fee||0) > 0"><span class="text-slate-500">رسوم توصيل</span><span class="font-bold num" x-text="Number(preview?.delivery_fee||0).toFixed(2) + ' ج.م'"></span></div>
+                            <div class="flex justify-between text-base"><span class="font-bold">الإجمالي</span><span class="font-extrabold num" x-text="Number(preview?.total||0).toFixed(2) + ' ج.م'"></span></div>
+                            <div class="flex justify-between" x-show="preview?.customer_name"><span class="text-slate-500">العميل</span><span class="font-semibold" x-text="preview?.customer_name"></span></div>
+                            <div class="flex justify-between" x-show="preview?.driver_name"><span class="text-slate-500">الطيار</span><span class="font-semibold" x-text="preview?.driver_name"></span></div>
+                        </div>
+                        <div class="flex gap-2 pt-2">
+                            <button @click="previewModal = false; checkout()" class="ds-btn ds-btn-accent flex-1 h-11">إتمام الدفع</button>
+                            <button @click="previewModal = false" class="ds-btn ds-btn-secondary px-5 h-11">تعديل</button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {{-- Close shift modal --}}
@@ -377,6 +453,28 @@
 @push('scripts')
 <script>
     const csrf = {{ Illuminate\Support\Js::from(csrf_token()) }};
+
+    // Prefill the opening cash with the custody carried over from the
+    // previous shift in the chosen branch (cumulative custody).
+    (function () {
+        var map = @js($suggestedOpening ?? []);
+        var select = document.querySelector('select[name="location_id"]');
+        var input = document.getElementById('opening_cash');
+        var hint = document.getElementById('carryover_hint');
+        if (!select || !input) return;
+        function apply() {
+            var v = Number(map[select.value] || 0);
+            input.value = v;
+            if (hint) {
+                hint.textContent = v > 0
+                    ? 'عهدة مرحّلة من الوردية اللي فاتت في الفرع ده: ' + v.toFixed(2) + ' ج — عدّلها لو المبلغ الفعلي مختلف.'
+                    : '';
+            }
+        }
+        select.addEventListener('change', apply);
+        apply();
+    })();
+
     function pos(shift) {
         return {
             shift,
@@ -385,6 +483,13 @@
             discount: 0,
             cash: 0,
             card: 0,
+            deliveryFee: 0,
+            driverId: '',
+            customerPhone: '',
+            customerId: null,
+            customerName: '',
+            preview: null,
+            previewModal: false,
             counted: 0,
             closeModal: false,
             closeNotes: '',
@@ -402,7 +507,7 @@
                 this.now = d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
             },
             get subtotal() { return this.cart.reduce((s, l) => s + (Number(l.qty)||0) * (Number(l.unit_price)||0), 0); },
-            get total() { return Math.max(this.subtotal - (Number(this.discount)||0), 0); },
+            get total() { return Math.max(this.subtotal - (Number(this.discount)||0) + (Number(this.deliveryFee)||0), 0); },
             get paid() { return (Number(this.cash)||0) + (Number(this.card)||0); },
             get change() { return Math.max(this.paid - this.total, 0); },
             fmtQty(q) { const n = Number(q); return Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/\.?0+$/, ''); },
@@ -414,7 +519,7 @@
                 [50,100,200,500].forEach(v => { if (v >= this.total) set.add(v); });
                 return Array.from(set).slice(0,4);
             },
-            clearCart() { if (confirm('تفريغ السلة بالكامل؟')) { this.cart = []; this.discount = 0; this.cash = 0; this.card = 0; this.error = ''; } },
+            clearCart() { if (confirm('تفريغ السلة بالكامل؟')) { this.cart = []; this.discount = 0; this.cash = 0; this.card = 0; this.deliveryFee = 0; this.driverId = ''; this.customerPhone = ''; this.customerId = null; this.customerName = ''; this.preview = null; this.error = ''; } },
             bump(idx, delta) {
                 const l = this.cart[idx];
                 const next = Math.max(0.001, (Number(l.qty) || 1) + delta);
@@ -460,13 +565,49 @@
                 } catch (e) { this.error = 'تعذر الاتصال بالخادم'; }
                 finally { this.busy = false; this.$nextTick(() => this.$refs.scanInput?.focus()); }
             },
+            async findCustomer() {
+                if (!this.customerPhone.trim()) { this.customerId = null; this.customerName = ''; return; }
+                try {
+                    const res = await fetch('{{ route('pos.customer') }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+                        body: JSON.stringify({ phone: this.customerPhone.trim() }),
+                    });
+                    const data = await res.json();
+                    if (data.ok) { this.customerId = data.customer.id; this.customerName = data.customer.name; }
+                    else { this.customerId = null; this.customerName = ''; this.error = 'العميل مش متسجل — هيتباع بدون عميل'; }
+                } catch (e) { this.error = 'تعذر الاتصال بالخادم'; }
+            },
+            async prepare() {
+                if (this.busy || this.cart.length === 0) return;
+                this.busy = true; this.error = '';
+                const lines = this.cart.map(l => l.box_sn ? { box_sn: l.box_sn } : { item_id: l.item_id, qty: Number(l.qty) });
+                try {
+                    const res = await fetch('{{ route('pos.prepare') }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+                        body: JSON.stringify({
+                            shift_id: this.shift.id, lines,
+                            discount: Number(this.discount)||0,
+                            delivery_fee: Number(this.deliveryFee)||0,
+                            customer_id: this.customerId,
+                            driver_id: this.driverId ? Number(this.driverId) : null,
+                        }),
+                    });
+                    const data = await res.json();
+                    if (!data.ok) { this.error = data.error || 'تعذر التجهيز'; return; }
+                    this.preview = data.preview;
+                    this.previewModal = true;
+                } catch (e) { this.error = 'تعذر الاتصال بالخادم'; }
+                finally { this.busy = false; }
+            },
             async checkout() {
                 if (this.busy || this.cart.length === 0) return;
                 if (this.paid < this.total) { this.error = 'المدفوع أقل من الإجمالي'; return; }
                 this.busy = true; this.error = '';
                 const lines = this.cart.map(l => l.box_sn ? { box_sn: l.box_sn } : { item_id: l.item_id, qty: Number(l.qty) });
                 const key = (crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + Math.random().toString(16).slice(2));
-                const payload = { discount: Number(this.discount)||0, cash: Number(this.cash)||0, card: Number(this.card)||0 };
+                const payload = { discount: Number(this.discount)||0, cash: Number(this.cash)||0, card: Number(this.card)||0, delivery_fee: Number(this.deliveryFee)||0, customer_id: this.customerId, driver_id: this.driverId ? Number(this.driverId) : null };
                 try {
                     const res = await fetch('{{ route('pos.sale') }}', {
                         method: 'POST',
@@ -481,12 +622,13 @@
                         change: data.sale.change,
                         subtotal: this.subtotal,
                         disc: payload.discount,
+                        deliveryFee: payload.delivery_fee,
                         cash: payload.cash,
                         card: payload.card,
                         at: new Date().toLocaleString('ar-EG'),
                         lines: this.cart.map(l => ({...l}))
                     };
-                    this.cart = []; this.discount = 0; this.cash = 0; this.card = 0; this.code = ''; this.searchResults = [];
+                    this.cart = []; this.discount = 0; this.cash = 0; this.card = 0; this.deliveryFee = 0; this.driverId = ''; this.customerPhone = ''; this.customerId = null; this.customerName = ''; this.preview = null; this.code = ''; this.searchResults = [];
                     this.$nextTick(() => { window.print(); this.$refs.scanInput?.focus(); });
                 } catch (e) { this.error = 'تعذر الاتصال بالخادم'; }
                 finally { this.busy = false; }

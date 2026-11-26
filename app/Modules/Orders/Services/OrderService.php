@@ -6,10 +6,14 @@ use App\Modules\Catalog\Models\Price;
 use App\Modules\Inventory\Models\Box;
 use App\Modules\Inventory\Models\StockMove;
 use App\Modules\Orders\Models\Customer;
+use App\Modules\Orders\Models\CustomerAddress;
+use App\Modules\Orders\Models\Driver;
 use App\Modules\Orders\Models\OnlineOrder;
 use App\Modules\Orders\Models\OnlineOrderBox;
 use App\Modules\Orders\Models\OnlineOrderLine;
 use App\Modules\Organization\Models\Location;
+use App\Modules\Sales\Models\Shift;
+use App\Modules\Sales\Models\ShiftCollection;
 use App\Modules\Sales\Services\PosService;
 use App\Modules\Settings\Services\SettingsService;
 use Illuminate\Support\Facades\DB;
@@ -147,12 +151,170 @@ class OrderService
         });
     }
 
+    /**
+     * Staff (customer-service) order creation.
+     *
+     * Same pricing as the public API (channel 'app'), but: the branch is
+     * auto-picked from the customer's area -> linked address location
+     * when the staff did not choose one explicitly; the delivery fee is
+     * editable (defaults to the branch setting); the app min-order and
+     * the 3-active-orders cap do NOT apply to staff orders.
+     * Channel is stored as 'phone' (خدمة عملاء).
+     *
+     * @param list<array{item_id:int,qty:float}> $lines
+     */
+    public function createStaffOrder(array $data, string $userId): OnlineOrder
+    {
+        $phone = preg_replace('/\D+/', '', (string) ($data['phone'] ?? ''));
+        if (strlen($phone) < 10 || strlen($phone) > 13) {
+            throw new \RuntimeException('رقم الموبايل مش صحيح');
+        }
+        if (trim((string) ($data['name'] ?? '')) === '' || trim((string) ($data['address'] ?? '')) === '') {
+            throw new \RuntimeException('اكتب الاسم والعنوان');
+        }
+
+        $lines = $data['lines'] ?? [];
+        if ($lines === [] || count($lines) > 40) {
+            throw new \RuntimeException('السلة فاضية');
+        }
+
+        $payMethod = $data['pay_method'] ?? 'cash';
+        if (! in_array($payMethod, ['cash', 'card', 'instapay'], true)) {
+            throw new \RuntimeException('طريقة الدفع مش صحيحة');
+        }
+
+        $location = $this->resolveBranch($data);
+
+        return DB::transaction(function () use ($data, $phone, $lines, $location, $payMethod, $userId) {
+            $customer = Customer::updateOrCreate(
+                ['phone' => $phone],
+                ['name' => trim((string) $data['name']), 'address' => trim((string) $data['address']), 'area' => $data['area'] ?? null],
+            );
+
+            $address = CustomerAddress::firstOrCreate(
+                ['customer_id' => $customer->id, 'address' => trim((string) $data['address'])],
+                [
+                    'label' => 'البيت',
+                    'area' => $data['area'] ?? $customer->area,
+                    'location_id' => $location,
+                    'is_default' => ! CustomerAddress::where('customer_id', $customer->id)->exists(),
+                    'active' => true,
+                ],
+            );
+
+            $fees = $this->settings->json('online.delivery_fee');
+            $fee = isset($data['delivery_fee'])
+                ? round((float) $data['delivery_fee'], 2)
+                : (float) ($fees[$location] ?? 0);
+            if ($fee < 0) {
+                throw new \RuntimeException('رسوم التوصيل مش صحيحة');
+            }
+
+            $order = OnlineOrder::create([
+                'no' => (int) max(9000, (int) OnlineOrder::max('no')) + 1,
+                'token' => Str::random(40),
+                'customer_id' => $customer->id,
+                'address_id' => $address->id,
+                'location_id' => $location,
+                'channel' => 'phone',
+                'status' => 'new',
+                'address' => trim((string) $data['address']),
+                'note' => $data['note'] ?? null,
+                'pay_method' => $payMethod,
+                'delivery_fee' => $fee,
+                'est_total' => 0,
+                'handled_by' => $userId,
+            ]);
+
+            $est = 0.0;
+            $index = 0;
+            foreach ($lines as $line) {
+                $index++;
+                $price = Price::where('item_id', (int) $line['item_id'])
+                    ->where('location_id', $location)->where('channel', 'app')->value('price');
+
+                if ($price === null) {
+                    throw new \RuntimeException('صنف مش متاح في الفرع ده');
+                }
+
+                $qty = (float) $line['qty'];
+                if ($qty <= 0 || $qty > 50) {
+                    throw new \RuntimeException('الكمية مش صحيحة');
+                }
+
+                OnlineOrderLine::create([
+                    'order_id' => $order->id,
+                    'line' => $index,
+                    'item_id' => (int) $line['item_id'],
+                    'qty' => $qty,
+                    'unit_price' => (float) $price,
+                    'prepared' => 0,
+                ]);
+
+                $est += round($qty * (float) $price, 2);
+            }
+
+            $order->update(['est_total' => round($est, 2)]);
+
+            return $order->fresh();
+        });
+    }
+
+    /**
+     * Branch for a staff order: explicit choice wins; otherwise the
+     * customer's area -> a linked customer address (default first).
+     * Throws when the area has no linked branch.
+     */
+    public function resolveBranch(array $data): string
+    {
+        if (! empty($data['location_id'])) {
+            $location = (string) $data['location_id'];
+            if (! Location::where('id', $location)->whereIn('type', ['dark', 'shop'])->where('active', true)->exists()) {
+                throw new \RuntimeException('اختار الفرع');
+            }
+
+            return $location;
+        }
+
+        $area = trim((string) ($data['area'] ?? ''));
+        if ($area !== '') {
+            $address = CustomerAddress::where('area', $area)
+                ->whereNotNull('location_id')->where('active', true)
+                ->orderByDesc('is_default')->orderByDesc('id')->first();
+
+            if ($address) {
+                return (string) $address->location_id;
+            }
+        }
+
+        throw new \RuntimeException('المنطقة دي مش مربوطة بفرع — اختار الفرع بنفسك');
+    }
+
+    /** @return array{0:int|null,1:string|null} [driver_id, driver display name] */
+    public function resolveDriver(?int $driverId, ?string $driverName, string $locationId): array
+    {
+        if ($driverId !== null) {
+            $driver = Driver::where('id', $driverId)->where('active', true)->first();
+
+            if (! $driver || $driver->location_id !== $locationId) {
+                throw new \RuntimeException('الطيار مش مربوط بالفرع ده');
+            }
+
+            return [(int) $driver->id, $driver->name];
+        }
+
+        // Legacy free-text driver name (old orders / seeds).
+        $name = trim((string) $driverName);
+
+        return [null, $name === '' ? null : $name];
+    }
+
     public function track(string $token): OnlineOrder
     {
         return OnlineOrder::with(['lines.item', 'customer'])->where('token', $token)->firstOrFail();
     }
 
-    public function setStatus(OnlineOrder $order, string $status, ?string $driver, ?string $reason, string $userId): void
+    public function setStatus(OnlineOrder $order, string $status, ?string $driver, ?string $reason, string $userId, ?int $driverId = null): void
     {
         $order = OnlineOrder::where('id', $order->id)->lockForUpdate()->firstOrFail();
 
@@ -187,11 +349,18 @@ class OrderService
         }
 
         if ($status === 'out' && $order->status === 'ready') {
-            if (trim((string) $driver) === '') {
-                throw new \RuntimeException('اكتب اسم الطيار');
+            [$resolvedDriverId, $resolvedDriverName] = $this->resolveDriver($driverId, $driver, $order->location_id);
+
+            if ($resolvedDriverName === null) {
+                throw new \RuntimeException('اختار الطيار من قائمة طيارين الفرع');
             }
 
-            $order->update(['status' => 'out', 'out_at' => now(), 'driver' => trim((string) $driver)]);
+            $order->update([
+                'status' => 'out',
+                'out_at' => now(),
+                'driver' => $resolvedDriverName,
+                'driver_id' => $resolvedDriverId,
+            ]);
 
             return;
         }
@@ -267,13 +436,45 @@ class OrderService
         }
     }
 
-    public function deliver(OnlineOrder $order): float
+    /**
+     * Receiving / collection (الشاشة الرابعة): the order must be 'out'.
+     * A collection method is required — it is never silently paid.
+     * The amount must equal the order total. Cash is recorded as custody
+     * of the receiving user on their open shift in this branch
+     * (ShiftCollection, method=cash); instapay/card are recorded for
+     * reports only and do NOT increase custody. Requires an open shift
+     * for the receiver in this branch, otherwise the collection has no
+     * shift/custody to attach to.
+     */
+    public function deliver(OnlineOrder $order, string $method, float $amount, string $userId): float
     {
-        return DB::transaction(function () use ($order) {
+        if (! in_array($method, OnlineOrder::COLLECTION_METHODS, true)) {
+            throw new \RuntimeException('اختار طريقة التحصيل: كاش أو إنستا باي أو فيزا');
+        }
+
+        return DB::transaction(function () use ($order, $method, $amount, $userId) {
             $order = OnlineOrder::where('id', $order->id)->lockForUpdate()->firstOrFail();
 
             if ($order->status !== 'out') {
                 throw new \RuntimeException('الطلب لازم يكون خرج مع الطيار');
+            }
+
+            $sub = (float) OnlineOrderLine::where('order_id', $order->id)->get()
+                ->sum(fn ($l) => (float) $l->prepared * (float) $l->unit_price);
+            $total = round($sub + (float) $order->delivery_fee, 2);
+
+            if (abs(round($amount, 2) - $total) > 0.01) {
+                throw new \RuntimeException('المبلغ لازم يساوي إجمالي الطلب ('.$total.' ج)');
+            }
+
+            $shift = Shift::where('cashier', $userId)
+                ->where('location_id', $order->location_id)
+                ->where('status', 'open')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $shift) {
+                throw new \RuntimeException('افتح وردية في الفرع ده الأول عشان التحصيل يتسجل على عهدتك');
             }
 
             foreach (OnlineOrderBox::where('order_id', $order->id)->where('removed', false)->get() as $ob) {
@@ -310,16 +511,24 @@ class OrderService
                 }
             }
 
-            $sub = (float) OnlineOrderLine::where('order_id', $order->id)->get()
-                ->sum(fn ($l) => (float) $l->prepared * (float) $l->unit_price);
-            $total = round($sub + (float) $order->delivery_fee, 2);
-
             $order->update([
                 'status' => 'delivered',
                 'delivered_at' => now(),
                 'subtotal' => round($sub, 2),
                 'total' => $total,
                 'paid' => true,
+                'collection_method' => $method,
+                'collected_at' => now(),
+                'shift_id' => $shift->id,
+            ]);
+
+            ShiftCollection::create([
+                'shift_id' => $shift->id,
+                'user_id' => $userId,
+                'location_id' => $order->location_id,
+                'order_id' => $order->id,
+                'method' => $method,
+                'amount' => $total,
             ]);
 
             return $total;

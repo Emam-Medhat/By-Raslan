@@ -1,7 +1,9 @@
 <?php
 
+use App\Modules\Orders\Http\Controllers\DriverController;
 use App\Modules\Orders\Http\Controllers\OrderController;
 use App\Modules\Orders\Http\Controllers\PublicOrderController;
+use App\Modules\Orders\Http\Controllers\ReservationController;
 use App\Modules\Orders\Http\Controllers\ShopController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,10 +22,33 @@ Route::middleware(['auth', 'active'])->group(function () {
         ->middleware('perm:orders.handle')->name('orders.index');
 
     Route::middleware('perm:orders.handle')->group(function () {
+        // Customer-service order creation (must come before /orders/{order}).
+        Route::get('/orders/create', [OrderController::class, 'create'])->name('orders.create');
+        Route::post('/orders', [OrderController::class, 'store'])->name('orders.store');
+
+        // Drivers (linked to a branch).
+        Route::get('/drivers', [DriverController::class, 'index'])->name('drivers.index');
+        Route::get('/drivers/create', [DriverController::class, 'create'])->name('drivers.create');
+        Route::post('/drivers', [DriverController::class, 'store'])->name('drivers.store');
+
+        // Reservations (الحجوزات) — must come before /orders/{order}.
+        Route::get('/reservations', [ReservationController::class, 'index'])->name('reservations.index');
+        Route::get('/reservations/create', [ReservationController::class, 'create'])->name('reservations.create');
+        Route::post('/reservations', [ReservationController::class, 'store'])->name('reservations.store');
+        Route::get('/reservations/{reservation}', [ReservationController::class, 'show'])->name('reservations.show');
+        // Manual "حوّل اوردر" — after confirming with the customer.
+        Route::post('/reservations/{reservation}/convert', [ReservationController::class, 'convert'])->name('reservations.convert');
+        Route::post('/reservations/{reservation}/cancel', [ReservationController::class, 'cancel'])->name('reservations.cancel');
+
+        // Factory report: tomorrow's reservations, aggregated per item.
+        Route::get('/reports/factory-reservations', [ReservationController::class, 'factoryReport'])->name('reports.factory-reservations');
+
         Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
         Route::post('/orders/{order}/status', [OrderController::class, 'status'])->name('orders.status');
         Route::post('/orders/{order}/scan', [OrderController::class, 'scan'])->name('orders.scan');
         Route::post('/orders/{order}/unscan', [OrderController::class, 'unscan'])->name('orders.unscan');
+        // Receiving / collection (الشاشة الرابعة); deliver is the legacy name.
+        Route::post('/orders/{order}/receive', [OrderController::class, 'receive'])->name('orders.receive');
         Route::post('/orders/{order}/deliver', [OrderController::class, 'deliver'])->name('orders.deliver');
     });
 });

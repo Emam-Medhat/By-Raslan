@@ -124,20 +124,48 @@ class ProductionService
     }
 
     /**
-     * Pack one box from a scale label ("itemId|weight").
+     * Pack one box from a scale label.
+     *
+     * يقبل باركود ميزان 13 رقماً (كود صنف 6 أرقام + وزن 5 أرقام، انظر
+     * ScaleBarcodeParser) أو الصيغة القديمة "itemId|weight".
+     * في باركود الميزان يُطابَق الصنف بكود الميزان (items.scale_plu) —
+     * فإن لم يوجد صنف بهذا الكود لا تُنشأ علبة.
+     *
+     * @param string|null $locationId الفرع/الموقع الذي ستذهب إليه العلبة (افتراضي: المصنع)
+     * @param string|null $packedAt   تاريخ الإنتاج (افتراضي: الآن)
+     * @param string|null $expiresAt  تاريخ الصلاحية (اختياري — لا يُخترع)
      */
-    public function packBox(string $code, ?int $orderId, ?string $by): Box
+    public function packBox(string $code, ?int $orderId, ?string $by, ?string $locationId = null, ?string $packedAt = null, ?string $expiresAt = null): Box
     {
-        if (! preg_match('/^(\d+)\|([\d.]+)$/', trim($code), $m)) {
-            throw new \RuntimeException('صيغة ملصق الميزان غير صحيحة');
-        }
+        $parsed = ScaleBarcodeParser::parseOrFail($code);
+        $code = trim($code);
 
-        $itemId = (int) $m[1];
-        $weight = (float) $m[2];
+        if ($parsed['source'] === 'scale') {
+            // المطابقة بكود الميزان فقط — الاسم لا يُطابَق.
+            $item = \App\Modules\Catalog\Models\Item::where('scale_plu', $parsed['item_code'])->first();
 
-        $item = \App\Modules\Catalog\Models\Item::find($itemId);
-        if (! $item || $item->kind !== 'product') {
-            throw new \RuntimeException('ده ملصق مش لعلبة منتج نهائي');
+            // توافق مع أكواد قديمة مخزنة بدون أصفار بادئة (مثل 110 بدل 000110).
+            if (! $item && ltrim((string) $parsed['item_code'], '0') !== '') {
+                $item = \App\Modules\Catalog\Models\Item::where('scale_plu', ltrim((string) $parsed['item_code'], '0'))->first();
+            }
+
+            if (! $item) {
+                throw new \RuntimeException('كود الصنف '.$parsed['item_code'].' غير موجود في السيستم - طابق كود الميزان مع كود السيستم');
+            }
+            if ($item->kind !== 'product') {
+                throw new \RuntimeException('ده ملصق مش لعلبة منتج نهائي');
+            }
+
+            $itemId = $item->id;
+            $weight = $parsed['weight_kg'];
+        } else {
+            $itemId = (int) $parsed['item_id'];
+            $weight = $parsed['weight_kg'];
+
+            $item = \App\Modules\Catalog\Models\Item::find($itemId);
+            if (! $item || $item->kind !== 'product') {
+                throw new \RuntimeException('ده ملصق مش لعلبة منتج نهائي');
+            }
         }
 
         if ($weight <= 0) {
@@ -175,20 +203,34 @@ class ProductionService
             }
         }
 
+        // الفرع/الموقع الذي ستذهب إليه العلبة — افتراضياً المصنع.
+        $locationId = $locationId ?: 'factory';
+        if (! \App\Modules\Organization\Models\Location::where('id', $locationId)->exists()) {
+            throw new \RuntimeException('الفرع ده مش موجود');
+        }
+
+        try {
+            $packedAtValue = $packedAt ? \Carbon\Carbon::parse($packedAt) : now();
+            $expiresAtValue = $expiresAt ? \Carbon\Carbon::parse($expiresAt) : null;
+        } catch (\Throwable) {
+            throw new \RuntimeException('تاريخ الإنتاج أو الصلاحية غير صحيح');
+        }
+
         $box = Box::create([
             'item_id' => $itemId,
             'weight' => $weight,
             'scale_code' => $code,
             'prod_order_id' => $orderId,
             'packed_by' => $by,
-            'packed_at' => now(),
-            'location_id' => 'factory',
+            'packed_at' => $packedAtValue,
+            'expires_at' => $expiresAtValue,
+            'location_id' => $locationId,
             'status' => 'stock',
         ]);
 
         StockMove::create([
             'item_id' => $itemId,
-            'location_id' => 'factory',
+            'location_id' => $locationId,
             'qty' => $weight,
             'kind' => 'pack',
             'ref' => 'B'.$box->sn,

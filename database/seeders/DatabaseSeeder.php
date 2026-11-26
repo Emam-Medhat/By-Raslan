@@ -13,6 +13,7 @@ use App\Modules\Production\Database\Seeders\ProductionSeeder;
 use App\Modules\Purchasing\Database\Seeders\PurchasingSeeder;
 use App\Modules\Returns\Database\Seeders\ReturnsSeeder;
 use App\Modules\Accounting\Database\Seeders\AccountingSeeder;
+use App\Modules\Orders\Database\Seeders\DriversSeeder;
 use App\Modules\Orders\Database\Seeders\OrdersSeeder;
 use App\Modules\Notifications\Database\Seeders\NotificationsSeeder;
 use App\Modules\Audit\Database\Seeders\AuditSeeder;
@@ -55,6 +56,7 @@ class DatabaseSeeder extends Seeder
             
             // Orders (depends on customers, catalog items, locations)
             OrdersSeeder::class,
+            DriversSeeder::class,
             
             // Notifications (depends on users, customers)
             NotificationsSeeder::class,

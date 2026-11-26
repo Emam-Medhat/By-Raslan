@@ -23,6 +23,14 @@ class BoxController
         return view('boxes.index', compact('box', 'history', 'sn'));
     }
 
+    /** ستيكر العلبة للطباعة: الرقم المميز والصنف والوزن وتاريخ الإنتاج والصلاحية. */
+    public function sticker(Box $box): View
+    {
+        $box->load(['item', 'location']);
+
+        return view('boxes.sticker', compact('box'));
+    }
+
     public function resolveMissing(Request $request): RedirectResponse
     {
         $data = $request->validate([

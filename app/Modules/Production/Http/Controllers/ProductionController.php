@@ -130,8 +130,12 @@ class ProductionController
     public function packPage(): View
     {
         $orders = ProdOrder::whereIn('status', ['planned', 'running'])->with('item')->orderByDesc('id')->get();
+        $locations = Location::whereIn('type', ['factory', 'warehouse', 'dark', 'shop'])->where('active', true)->orderBy('name')->get();
+        $lastBox = session('last_box_sn')
+            ? \App\Modules\Inventory\Models\Box::with(['item', 'location'])->find((int) session('last_box_sn'))
+            : null;
 
-        return view('pack.index', compact('orders'));
+        return view('pack.index', compact('orders', 'locations', 'lastBox'));
     }
 
     public function pack(Request $request): RedirectResponse
@@ -139,15 +143,25 @@ class ProductionController
         $data = $request->validate([
             'code' => ['required', 'string'],
             'order_id' => ['nullable', 'exists:prod_orders,id'],
+            'location_id' => ['nullable', 'exists:locations,id'],
+            'packed_at' => ['nullable', 'date'],
+            'expires_at' => ['nullable', 'date'],
         ]);
 
         try {
-            $box = $this->production->packBox($data['code'], isset($data['order_id']) ? (int) $data['order_id'] : null, auth()->id());
+            $box = $this->production->packBox(
+                $data['code'],
+                isset($data['order_id']) ? (int) $data['order_id'] : null,
+                auth()->id(),
+                $data['location_id'] ?? null,
+                $data['packed_at'] ?? null,
+                $data['expires_at'] ?? null,
+            );
         } catch (\RuntimeException $e) {
-            return back()->withErrors(['pack' => $e->getMessage()]);
+            return back()->withErrors(['pack' => $e->getMessage()])->withInput();
         }
 
-        return back()->with('status', 'تم تغليف علبة #'.$box->sn);
+        return back()->with('status', 'تم تغليف علبة #'.$box->sn)->with('last_box_sn', $box->sn);
     }
 
     public function packFinish(Request $request): RedirectResponse

@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Sales\Http\Controllers\CashTransferController;
+use App\Modules\Sales\Http\Controllers\DailyClosingController;
 use App\Modules\Sales\Http\Controllers\PosController;
 use App\Modules\Sales\Http\Controllers\ShiftController;
 use App\Modules\Sales\Http\Controllers\ShiftExpenseController;
@@ -12,6 +13,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::post('/pos/open', [PosController::class, 'open'])->name('pos.open');
         Route::post('/pos/lookup', [PosController::class, 'lookup'])->name('pos.lookup');
         Route::post('/pos/search', [PosController::class, 'search'])->name('pos.search');
+        Route::post('/pos/customer', [PosController::class, 'customer'])->name('pos.customer');
+        Route::post('/pos/prepare', [PosController::class, 'prepare'])->name('pos.prepare');
         Route::post('/pos/sale', [PosController::class, 'sale'])
             ->middleware('shift')
             ->name('pos.sale');
@@ -21,6 +24,9 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::middleware('perm:acc.view')->group(function () {
         Route::get('/sales', [PosController::class, 'sales'])->name('sales.index');
         Route::get('/sales/export', [PosController::class, 'salesExport'])->name('sales.export');
+
+        // Daily closing report (per day, per branch)
+        Route::get('/reports/daily-closing', [DailyClosingController::class, 'index'])->name('reports.daily-closing');
 
         // Shifts
         Route::get('/shifts', [ShiftController::class, 'index'])->name('shifts.index');

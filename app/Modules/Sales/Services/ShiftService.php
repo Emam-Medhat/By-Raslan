@@ -8,6 +8,7 @@ use App\Modules\Organization\Models\Location;
 use App\Modules\Sales\Models\CashTransfer;
 use App\Modules\Sales\Models\Sale;
 use App\Modules\Sales\Models\Shift;
+use App\Modules\Sales\Models\ShiftCollection;
 use App\Modules\Sales\Models\ShiftExpense;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -46,7 +47,7 @@ class ShiftService
             ]);
         }
 
-        return Shift::create([
+        $shift = Shift::create([
             'location_id' => $data['location_id'],
             'cashier' => $data['cashier'],
             'open_cashier' => $data['cashier'],
@@ -54,6 +55,61 @@ class ShiftService
             'opening_cash' => round((float) $data['opening_cash'], 2),
             'status' => 'open',
         ]);
+
+        // If the opening cash equals the custody carried over from the
+        // previous shift in this branch, link the carryover transfer to
+        // this shift so it is consumed exactly once.
+        $this->consumeCarryover($shift);
+
+        return $shift;
+    }
+
+    /**
+     * Custody carried into a new shift in this branch: the carryover of
+     * the last closed shift in the branch, provided no shift has been
+     * opened in the branch since that shift closed (otherwise the
+     * custody was already picked up by the newer shift).
+     */
+    public function suggestedOpeningCash(string $locationId, ?int $excludeShiftId = null): float
+    {
+        $last = Shift::where('location_id', $locationId)
+            ->where('status', 'closed')
+            ->whereNotNull('closed_at')
+            ->orderByDesc('closed_at')
+            ->first();
+
+        if (! $last || (float) $last->carryover_to_next_shift <= 0) {
+            return 0.0;
+        }
+
+        $openedAfter = Shift::where('location_id', $locationId)
+            ->when($excludeShiftId, fn ($q) => $q->where('id', '!=', $excludeShiftId))
+            ->where('opened_at', '>', $last->closed_at)
+            ->exists();
+
+        return $openedAfter ? 0.0 : round((float) $last->carryover_to_next_shift, 2);
+    }
+
+    /**
+     * Link the branch's unconsumed carryover transfer to the new shift,
+     * but only when the shift actually opened with exactly that amount.
+     */
+    public function consumeCarryover(Shift $shift): void
+    {
+        $suggested = $this->suggestedOpeningCash($shift->location_id, $shift->id);
+
+        if ($suggested <= 0 || abs((float) $shift->opening_cash - $suggested) > 0.01) {
+            return;
+        }
+
+        CashTransfer::where('location_id', $shift->location_id)
+            ->where('type', 'to_next_shift')
+            ->where('status', 'approved')
+            ->whereNull('to_shift_id')
+            ->where('amount', $suggested)
+            ->orderByDesc('id')
+            ->first()
+            ?->update(['to_shift_id' => $shift->id, 'to_user_id' => $shift->cashier]);
     }
 
     /**
@@ -87,26 +143,12 @@ class ShiftService
                 }
             }
 
-            // Calculate expenses from shift_expenses (approved + pending)
-            $expensesTotal = (float) ShiftExpense::where('shift_id', $shiftId)
-                ->whereIn('status', ['approved', 'pending'])
-                ->sum('amount');
-
-            // Calculate transfers to manager
-            $transfersToManager = (float) CashTransfer::where('from_shift_id', $shiftId)
-                ->whereIn('type', ['to_manager', 'to_safe'])
-                ->whereIn('status', ['approved', 'pending'])
-                ->sum('amount');
-
-            // Calculate cash sales (paid_cash - change)
-            $cashSales = (float) Sale::where('shift_id', $shiftId)
-                ->sum(DB::raw('paid_cash - `change`'));
-
-            // Calculate expected cash
-            $expected = round(
-                (float) $shift->opening_cash + $cashSales - $expensesTotal - $transfersToManager,
-                2
-            );
+            // One expected-cash formula for every close path (see
+            // calculateExpectedCash): opening + POS cash + online cash
+            // collections - cash return refunds - expenses - transfers.
+            $expected = $this->calculateExpectedCash($shift);
+            $expensesTotal = $this->expensesTotal($shift->id);
+            $transfersToManager = $this->transfersToManagerTotal($shift->id);
 
             // Carryover = actual ending cash (what remains in drawer)
             $carryover = $countedCash;
@@ -148,23 +190,72 @@ class ShiftService
     }
 
     /**
-     * Calculate expected cash for a shift.
+     * Calculate expected cash for a shift — the single formula every close
+     * path uses, so the cashier button and the shifts screen can never
+     * disagree. The system calculates the cash from the orders; it never
+     * asks the user how much is in the drawer (that is only the counted
+     * cash entered at close time, compared against this number).
+     *
+     * expected = opening cash
+     *   + POS cash sales (paid_cash - change)
+     *   + cash collected on online orders (ShiftCollection method=cash;
+     *     instapay/card collections are report-only and do NOT count)
+     *   - cash refunds on returns approved against this shift
+     *   - expenses (shift expenses + general expenses charged to the shift)
+     *   - transfers to manager / safe
+     *
+     * Custody is cumulative across days: the counted cash becomes the
+     * carryover (see closeShift), and the next shift in the branch opens
+     * with it (see suggestedOpeningCash / consumeCarryover).
      */
     public function calculateExpectedCash(Shift $shift): float
     {
         $cashSales = (float) Sale::where('shift_id', $shift->id)
             ->sum(DB::raw('paid_cash - `change`'));
 
-        $expenses = (float) ShiftExpense::where('shift_id', $shift->id)
+        $onlineCash = (float) ShiftCollection::where('shift_id', $shift->id)
+            ->where('method', 'cash')->sum('amount');
+
+        $cashRefunds = $this->cashRefundsTotal($shift->id);
+
+        return round(
+            (float) $shift->opening_cash + $cashSales + $onlineCash - $cashRefunds
+                - $this->expensesTotal($shift->id) - $this->transfersToManagerTotal($shift->id),
+            2
+        );
+    }
+
+    /** Cash refunded on returns approved against this shift. */
+    public function cashRefundsTotal(int $shiftId): float
+    {
+        return (float) \App\Modules\Returns\Models\SalesReturn::where('shift_id', $shiftId)
+            ->where('status', 'approved')
+            ->where('refund_method', 'cash')
+            ->sum('refund_amount');
+    }
+
+    /** All expenses charged to the shift (both expense tables). */
+    public function expensesTotal(int $shiftId): float
+    {
+        $shiftExpenses = (float) ShiftExpense::where('shift_id', $shiftId)
             ->whereIn('status', ['approved', 'pending'])
             ->sum('amount');
 
-        $transfers = (float) CashTransfer::where('from_shift_id', $shift->id)
+        $general = (float) DB::table('expenses')
+            ->where('shift_id', $shiftId)
+            ->where('status', '!=', 'rejected')
+            ->sum('amount');
+
+        return round($shiftExpenses + $general, 2);
+    }
+
+    /** Transfers from this shift to the manager or the safe. */
+    public function transfersToManagerTotal(int $shiftId): float
+    {
+        return (float) CashTransfer::where('from_shift_id', $shiftId)
             ->whereIn('type', ['to_manager', 'to_safe'])
             ->whereIn('status', ['approved', 'pending'])
             ->sum('amount');
-
-        return round((float) $shift->opening_cash + $cashSales - $expenses - $transfers, 2);
     }
 
     /**

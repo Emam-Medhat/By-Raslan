@@ -3,6 +3,7 @@
 namespace App\Modules\Returns\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SalesReturnLine extends Model
 {
@@ -13,5 +14,10 @@ class SalesReturnLine extends Model
     protected function casts(): array
     {
         return ['qty' => 'decimal:3', 'unit_price' => 'decimal:2', 'total' => 'decimal:2'];
+    }
+
+    public function salesReturn(): BelongsTo
+    {
+        return $this->belongsTo(SalesReturn::class, 'return_id');
     }
 }
