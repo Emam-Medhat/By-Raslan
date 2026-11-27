@@ -3,6 +3,8 @@
 use App\Modules\Identity\Http\Middleware\CheckPermission;
 use App\Modules\Identity\Http\Middleware\EnsureActive;
 use App\Modules\Identity\Http\Middleware\EnsureNavAccess;
+use App\Modules\Orders\Services\ReservationService;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
