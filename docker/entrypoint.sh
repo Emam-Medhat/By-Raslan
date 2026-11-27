@@ -1,37 +1,33 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -e
 
-cd /var/www/html
+# Railway / Render set $PORT — make Apache listen on it.
+if [ -n "$PORT" ]; then
+  sed -i "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf
+  sed -i "s/:80>/:${PORT}>/" /etc/apache2/sites-available/000-default.conf
+fi
 
-PORT="${PORT:-8080}"
-sed -i "s/listen 8080;/listen ${PORT};/" /etc/nginx/sites-available/default
-
+# Create .env from the platform's env vars on first boot (Railway injects them).
 if [ ! -f .env ]; then
-  cp .env.example .env
+  cp .env.example .env 2>/dev/null || true
 fi
 
-# Ensure required runtime env defaults for free/container deploys.
-export APP_ENV="${APP_ENV:-production}"
-export APP_DEBUG="${APP_DEBUG:-false}"
-export APP_URL="${APP_URL:-http://localhost}"
-export DB_CONNECTION="${DB_CONNECTION:-sqlite}"
-export DB_DATABASE="${DB_DATABASE:-/var/www/html/database/database.sqlite}"
-export SESSION_DRIVER="${SESSION_DRIVER:-database}"
-export CACHE_STORE="${CACHE_STORE:-database}"
-export QUEUE_CONNECTION="${QUEUE_CONNECTION:-database}"
-export LOG_CHANNEL="${LOG_CHANNEL:-stderr}"
-
-if [ "$DB_CONNECTION" = "sqlite" ]; then
-  mkdir -p "$(dirname "$DB_DATABASE")"
-  touch "$DB_DATABASE"
+# App key (only if the platform did not provide one)
+if ! grep -q "^APP_KEY=.\+" .env 2>/dev/null; then
+  php artisan key:generate --force || true
 fi
 
-php artisan key:generate --force --no-interaction || true
-php artisan storage:link --no-interaction || true
-php artisan migrate --force --no-interaction
-php artisan config:cache --no-interaction || true
-php artisan route:cache --no-interaction || true
-php artisan view:cache --no-interaction || true
+# Production defaults (do not override explicit env vars)
+export APP_ENV=${APP_ENV:-production}
+export APP_DEBUG=${APP_DEBUG:-false}
 
-php-fpm -D
-exec nginx -g 'daemon off;'
+# Database migrations (safe to run on every deploy)
+php artisan migrate --force || echo "WARN: migrations failed - check DB_* env vars"
+
+# Storage link + caches
+php artisan storage:link || true
+php artisan config:cache || true
+php artisan route:cache || true
+php artisan view:cache || true
+
+exec "$@"
