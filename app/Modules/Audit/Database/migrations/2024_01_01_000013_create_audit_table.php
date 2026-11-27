@@ -16,8 +16,8 @@ return new class extends Migration
             $table->timestamp('at')->nullable();
             $table->char('by', 36)->nullable();
             $table->string('action');
-            $table->string('table_name')->nullable();
-            $table->string('record_id')->nullable();
+            $table->string('table_name', 100)->nullable();
+            $table->string('record_id', 100)->nullable();
             $table->json('old')->nullable();
             $table->json('new')->nullable();
             $table->index(['table_name', 'record_id']);
