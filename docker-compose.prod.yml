@@ -1,0 +1,64 @@
+# BY RASLAN ERP — Production stack for a VPS (Oracle Always Free, etc.)
+# Usage on the server:  docker compose -f docker-compose.prod.yml up -d --build
+# The app container runs migrations automatically on start (see Dockerfile entrypoint).
+# MySQL data persists in the `byraslan-mysql` volume. Redis is used for cache/queue
+# only if CACHE_STORE / QUEUE_CONNECTION are set to redis in .env.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: byraslan-app
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      APP_NAME: ${APP_NAME:-BY RASLAN ERP}
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: ${APP_URL:-http://localhost}
+      APP_KEY: ${APP_KEY:-}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-byraslan}
+      DB_USERNAME: ${DB_USERNAME:-byraslan}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+      QUEUE_CONNECTION: database
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - byraslan-storage:/var/www/html/storage/app
+
+  mysql:
+    image: mysql:8.4
+    container_name: byraslan-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_DATABASE:-byraslan}
+      MYSQL_USER: ${DB_USERNAME:-byraslan}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+    volumes:
+      - byraslan-mysql:/var/lib/mysql
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: byraslan-redis
+    restart: unless-stopped
+
+volumes:
+  byraslan-mysql:
+  byraslan-storage:
