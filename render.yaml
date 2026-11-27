@@ -1,10 +1,14 @@
+# Render Blueprint for BY RASLAN ERP (Laravel 12)
+# Deploy: Render Dashboard -> New -> Blueprint -> connect Emam-Medhat/By-Raslan
+# Free tier notes: web service sleeps after 15 min idle (first load is slow);
+# free PostgreSQL expires after 90 days - back up data regularly.
 services:
   - type: web
-    name: byraslan-erp
+    name: by-raslan
     runtime: docker
-    plan: free
-    autoDeploy: true
     dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /login
     envVars:
       - key: APP_NAME
         value: BY RASLAN ERP
@@ -13,18 +17,38 @@ services:
       - key: APP_DEBUG
         value: "false"
       - key: APP_URL
-        sync: false
-      - key: APP_KEY
-        generateValue: true
+        value: https://by-raslan.onrender.com
       - key: DB_CONNECTION
-        value: sqlite
+        value: pgsql
+      - key: DB_HOST
+        fromDatabase:
+          name: by-raslan-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: by-raslan-db
+          property: port
       - key: DB_DATABASE
-        value: /var/www/html/database/database.sqlite
+        fromDatabase:
+          name: by-raslan-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: by-raslan-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: by-raslan-db
+          property: password
       - key: SESSION_DRIVER
         value: database
       - key: CACHE_STORE
         value: database
       - key: QUEUE_CONNECTION
         value: database
-      - key: LOG_CHANNEL
-        value: stderr
+
+databases:
+  - name: by-raslan-db
+    plan: free
+    databaseName: byraslan
+    user: byraslan
