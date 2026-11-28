@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\DB;
 
 class OrdersSeeder extends Seeder
 {
+    /** Box SNs already used as active_box (globally unique column) - never reuse one. */
+    protected array $usedBoxSns = [];
+
     public function run(): void
     {
         DB::transaction(function () {
@@ -139,9 +142,13 @@ class OrdersSeeder extends Seeder
                     if (empty($boxSns)) {
                         $boxSns = [100001];
                     }
-                    $numBoxes = rand(1, 5);
-                    for ($b = 1; $b <= $numBoxes; $b++) {
-                        $boxSn = $boxSns[array_rand($boxSns)];
+                    // active_box is globally unique: each box SN may be used only once
+                    // in the whole seed run, otherwise MySQL throws 1062 Duplicate entry.
+                    $available = array_values(array_diff($boxSns, $this->usedBoxSns));
+                    $numBoxes = min(rand(1, 5), count($available));
+                    for ($b = 0; $b < $numBoxes; $b++) {
+                        $boxSn = $available[$b];
+                        $this->usedBoxSns[] = $boxSn;
                         OnlineOrderBox::create([
                             'order_id' => $order->id,
                             'box_sn' => $boxSn,
